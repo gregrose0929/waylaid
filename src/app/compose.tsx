@@ -1,0 +1,236 @@
+import * as Haptics from 'expo-haptics';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { TransportPicker } from '@/components/transport-picker';
+import { Button, Card, ErrorText, Field } from '@/components/ui';
+import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { api, type Person } from '@/lib/api';
+import { displayName, formatDistance, formatDuration } from '@/lib/format';
+import { estimateTripMs } from '@/lib/trip';
+import { useApp } from '@/providers/app-state';
+
+type Recipient = Person & { has_home: boolean };
+
+export default function ComposeScreen() {
+  const params = useLocalSearchParams<{ to?: string; username?: string; name?: string }>();
+  const { transport, units, refreshMail, refreshMe } = useApp();
+  const theme = useTheme();
+
+  const [query, setQuery] = useState('');
+  const [found, setFound] = useState<{ query: string; users: Recipient[] }>({ query: '', users: [] });
+  const [to, setTo] = useState<Recipient | null>(
+    params.to && params.username
+      ? { id: params.to, username: params.username, display_name: params.name || null, has_home: true }
+      : null,
+  );
+  const [quote, setQuote] = useState<{ recipientId: string; km: number } | null>(null);
+  const [body, setBody] = useState('');
+  const [carrier, setCarrier] = useState<string | null>('pigeon');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ emoji: string; eta: number } | null>(null);
+
+  // Search usernames as you type.
+  const searching = !to && query.trim().length > 0;
+  const results = searching && found.query === query ? found.users : [];
+  useEffect(() => {
+    if (!searching) return;
+    let cancelled = false;
+    const id = setTimeout(() => {
+      api
+        .findUsers(query)
+        .then((users) => !cancelled && setFound({ query, users }))
+        .catch(() => {});
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+    };
+  }, [query, searching]);
+
+  // Distance decides every carrier's ETA.
+  const distanceKm = to && quote?.recipientId === to.id ? quote.km : null;
+  useEffect(() => {
+    if (!to) return;
+    api
+      .quoteDistance(to.id)
+      .then((km) => setQuote({ recipientId: to.id, km }))
+      .catch((e) => setError(e.message));
+  }, [to]);
+
+  async function send() {
+    if (!to || !carrier) return;
+    setSending(true);
+    setError(null);
+    try {
+      await api.send(to.id, body, carrier);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      const t = transport(carrier);
+      setSent({ emoji: t?.emoji ?? '✉️', eta: t && distanceKm != null ? estimateTripMs(distanceKm, t) : 0 });
+      refreshMail().catch(() => {});
+      refreshMe().catch(() => {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <ThemedView style={[styles.flex, styles.sent]}>
+        <ThemedText style={styles.sentEmoji}>{sent.emoji}</ThemedText>
+        <ThemedText type="subtitle" style={{ textAlign: 'center' }}>
+          It’s on its way!
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
+          If all goes well, {to ? displayName(to) : 'they'} will have it in about {formatDuration(sent.eta)}.
+        </ThemedText>
+        <Button title="Done" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
+      </ThemedView>
+    );
+  }
+
+  const chosen = carrier ? transport(carrier) : undefined;
+  const canSend = !!to && !!carrier && body.trim().length > 0 && distanceKm != null;
+
+  return (
+    <ThemedView style={styles.flex}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* To */}
+          {to ? (
+            <Card style={styles.toCard}>
+              <View style={{ flex: 1 }}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  To
+                </ThemedText>
+                <ThemedText style={{ fontWeight: 700 }}>
+                  {displayName(to)} {to.display_name ? <ThemedText themeColor="textSecondary">@{to.username}</ThemedText> : null}
+                </ThemedText>
+                {distanceKm != null && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {formatDistance(distanceKm, units)} away
+                  </ThemedText>
+                )}
+              </View>
+              <Pressable onPress={() => setTo(null)} hitSlop={12}>
+                <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                  Change
+                </ThemedText>
+              </Pressable>
+            </Card>
+          ) : (
+            <View style={{ gap: Spacing.two }}>
+              <Field
+                label="To"
+                placeholder="Search by username"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                value={query}
+                onChangeText={setQuery}
+              />
+              {results.map((r) => (
+                <Card
+                  key={r.id}
+                  onPress={() => {
+                    if (!r.has_home) return;
+                    setTo(r);
+                    setQuery('');
+                    setError(null);
+                  }}
+                  style={!r.has_home && { opacity: 0.5 }}>
+                  <ThemedText style={{ fontWeight: 700 }}>@{r.username}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {r.has_home ? (r.display_name ?? ' ') : "Hasn't set up a mailbox yet"}
+                  </ThemedText>
+                </Card>
+              ))}
+            </View>
+          )}
+
+          {/* Letter */}
+          <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+            <TextInput
+              multiline
+              placeholder="Dear friend…"
+              placeholderTextColor={theme.textSecondary}
+              value={body}
+              onChangeText={setBody}
+              maxLength={2000}
+              style={[styles.letter, { color: theme.text }]}
+            />
+            <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'right' }}>
+              {body.length}/2000
+            </ThemedText>
+          </View>
+
+          {/* Carrier */}
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            CHOOSE A CARRIER
+          </ThemedText>
+          <TransportPicker distanceKm={distanceKm} value={carrier} onChange={setCarrier} />
+        </ScrollView>
+
+        <SafeAreaView edges={['bottom']} style={[styles.footer, { borderColor: theme.border }]}>
+          <ErrorText>{error}</ErrorText>
+          <Button
+            title={chosen ? `Send by ${chosen.name} ${chosen.emoji}` : 'Send'}
+            onPress={send}
+            loading={sending}
+            disabled={!canSend}
+          />
+        </SafeAreaView>
+      </KeyboardAvoidingView>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  content: {
+    padding: Spacing.three,
+    gap: Spacing.three,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+  },
+  toCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  paper: {
+    borderRadius: Radius.medium,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.three,
+  },
+  letter: {
+    minHeight: 160,
+    fontFamily: Fonts.serif,
+    fontSize: 18,
+    lineHeight: 26,
+    textAlignVertical: 'top',
+  },
+  footer: {
+    padding: Spacing.three,
+    gap: Spacing.two,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  sent: {
+    padding: Spacing.four,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.three,
+  },
+  sentEmoji: {
+    fontSize: 80,
+    lineHeight: 96,
+  },
+});

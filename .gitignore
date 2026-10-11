@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Supabase keys (copy .env.example to .env)
+.env
