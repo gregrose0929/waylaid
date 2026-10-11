@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "Slowpost",
-    "slug": "slowpost",
+    "name": "Waylaid",
+    "slug": "waylaid",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "slowpost",
+    "scheme": "waylaid",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.slowpost.app",
+      "bundleIdentifier": "com.waylaid.app",
       "supportsTablet": true
     },
     "android": {
@@ -20,7 +20,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.slowpost.app"
+      "package": "com.waylaid.app"
     },
     "web": {
       "output": "static",
@@ -42,7 +42,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Slowpost uses your location to place your mailbox and to find lost letters near you."
+          "locationWhenInUsePermission": "Waylaid uses your location to place your mailbox and to find lost letters near you."
         }
       ],
       "react-native-maps"

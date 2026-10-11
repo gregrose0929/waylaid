@@ -31,7 +31,7 @@ type AppState = {
 };
 
 const Ctx = createContext<AppState | null>(null);
-const UNITS_KEY = 'slowpost.units';
+const UNITS_KEY = 'waylaid.units';
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);

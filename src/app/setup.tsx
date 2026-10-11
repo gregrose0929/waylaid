@@ -15,7 +15,7 @@ export default function SetupScreen() {
           <ThemedText style={styles.emoji}>🛠️</ThemedText>
           <ThemedText type="subtitle">Almost there</ThemedText>
           <ThemedText themeColor="textSecondary">
-            Slowpost needs a Supabase project to carry letters. Follow the steps in the README, then put your
+            Waylaid needs a Supabase project to carry letters. Follow the steps in the README, then put your
             keys in a file called .env at the root of the project:
           </ThemedText>
           <Card>

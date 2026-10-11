@@ -1,5 +1,5 @@
 /**
- * Slowpost's look: warm paper, ink, and a wax-seal red.
+ * Waylaid's look: warm paper, ink, and a wax-seal red.
  */
 
 import '@/global.css';

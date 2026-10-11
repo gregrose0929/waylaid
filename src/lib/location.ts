@@ -7,7 +7,7 @@ export type Here = { lat: number; lng: number };
 export async function getHere(): Promise<Here> {
   const { status } = await Location.requestForegroundPermissionsAsync();
   if (status !== 'granted') {
-    throw new Error('Slowpost needs your location to know where your mailbox is.');
+    throw new Error('Waylaid needs your location to know where your mailbox is.');
   }
   const pos =
     (await Location.getLastKnownPositionAsync({ maxAge: 60_000 })) ??

@@ -1,4 +1,4 @@
--- Slowpost: messages that travel at the speed of their carrier.
+-- Waylaid: messages that travel at the speed of their carrier.
 --
 -- Design notes
 -- * Every table has RLS enabled and (apart from `transports`) no client policies.

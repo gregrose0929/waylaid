@@ -1,8 +1,8 @@
-# 🕊️ Slowpost
+# 🕊️ Waylaid
 
-**Letters that take their time.**
+**Send it your own way.**
 
-Slowpost is a messenger for iPhone and Android where messages aren't instant. When you send a letter, you choose
+Waylaid is a messenger for iPhone and Android where messages aren't instant. When you send a letter, you choose
 how it travels: a carrier pigeon, a steam train, a garden snail, an SR-71 Blackbird. The app works out the real
 distance between your mailbox and theirs, and the letter takes exactly as long as that carrier would to get there.
 
@@ -104,16 +104,25 @@ npm run typecheck
 npm run lint
 ```
 
-## Building for the stores
+## Building an installable app
 
-Use [EAS Build](https://docs.expo.dev/build/introduction/):
+[EAS Build](https://docs.expo.dev/build/introduction/) compiles the app in the cloud. The Supabase URL and
+publishable key are set in [`eas.json`](eas.json), because `.env` isn't uploaded.
+
+Android needs a Google Maps key (Maps SDK for Android). [`app.config.js`](app.config.js) reads it from an EAS
+environment variable, so it never lands in git:
 
 ```bash
-npx eas-cli@latest build --platform all
+npx eas-cli@latest env:create --name GOOGLE_MAPS_ANDROID_KEY --value YOUR_KEY --environment preview --environment production --visibility sensitive
 ```
 
-Android builds need a Google Maps API key. See the
-[react-native-maps config docs](https://docs.expo.dev/versions/latest/sdk/map-view/).
+Then build an APK you can install directly on an Android phone:
+
+```bash
+npx eas-cli@latest build --platform android --profile preview
+```
+
+iPhone builds need an Apple Developer account.
 
 ## Ideas for later
 

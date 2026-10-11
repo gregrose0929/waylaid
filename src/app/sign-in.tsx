@@ -42,9 +42,9 @@ export default function SignInScreen() {
           style={styles.container}>
           <View style={styles.hero}>
             <ThemedText style={styles.logo}>🕊️</ThemedText>
-            <ThemedText style={styles.title}>Slowpost</ThemedText>
+            <ThemedText style={styles.title}>Waylaid</ThemedText>
             <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
-              Letters that take their time.{'\n'}Pick a carrier. Hope it makes it.
+              Send it your own way.{'\n'}Pick a carrier. Hope it makes it.
             </ThemedText>
           </View>
 

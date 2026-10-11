@@ -73,7 +73,7 @@ export default function MailScreen() {
 
   const header = (
     <View style={{ gap: Spacing.three, paddingBottom: Spacing.two }}>
-      <ThemedText style={styles.title}>Slowpost</ThemedText>
+      <ThemedText style={styles.title}>Waylaid</ThemedText>
       <Segmented options={tabs} value={tab} onChange={setTab} />
       <ErrorText>{error}</ErrorText>
     </View>

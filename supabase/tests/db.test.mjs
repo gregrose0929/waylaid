@@ -1,4 +1,4 @@
-// End-to-end test of the Slowpost database API, run against an in-process
+// End-to-end test of the Waylaid database API, run against an in-process
 // Postgres + PostGIS (PGlite). No Supabase project or Docker needed.
 //
 //   npm run test:db
