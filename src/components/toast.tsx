@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BottomTabInset, Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+
+/** The toast lives above every screen (including the tab bar), so it clears the bar's full height. */
+const TAB_BAR_CLEARANCE = Platform.select({ ios: 50, android: 80 }) ?? 0;
 
 type Toast = { id: number; message: string; action?: { label: string; onPress: () => void } };
 type ShowToast = (message: string, action?: Toast['action']) => void;
@@ -39,7 +42,7 @@ function ToastView({ toast, onDone }: { toast: Toast; onDone: () => void }) {
   }, [onDone]);
 
   return (
-    <View pointerEvents="box-none" style={[styles.wrap, { bottom: insets.bottom + BottomTabInset + Spacing.three }]}>
+    <View pointerEvents="box-none" style={[styles.wrap, { bottom: insets.bottom + TAB_BAR_CLEARANCE + Spacing.three }]}>
       <Animated.View entering={FadeInDown} exiting={FadeOutDown} style={[styles.toast, { backgroundColor: theme.text }]}>
         <Text style={[styles.message, { color: theme.background }]} numberOfLines={2}>
           {toast.message}

@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { Radius } from '@/constants/theme';
@@ -27,6 +27,9 @@ export function Postcard({
   const source = uri ?? remote;
   // Until the photo loads we don't know its shape; assume a classic 4:3 postcard.
   const [ratio, setRatio] = useState(4 / 3);
+  // Measure the photo's shape once. Android reloads the image whenever the frame resizes and
+  // can report a slightly different size, which would otherwise resize -> reload -> resize forever.
+  const measured = useRef<string | null>(null);
   return (
     <View
       style={[
@@ -40,8 +43,10 @@ export function Postcard({
           contentFit="contain"
           transition={200}
           onLoad={(e) => {
-            const { width, height } = e.source;
-            if (width > 0 && height > 0) setRatio(width / height);
+            const { width: w, height: h } = e.source;
+            if (measured.current === source || !(w > 0 && h > 0)) return;
+            measured.current = source;
+            setRatio(Math.round((w / h) * 100) / 100);
           }}
         />
       ) : (

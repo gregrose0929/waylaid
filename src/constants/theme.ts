@@ -76,5 +76,9 @@ export const Radius = {
   large: 24,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+/**
+ * Space to leave for the tab bar. On iOS the tab bar floats over the screen; on Android
+ * native tabs already stop the screen above it, so nothing extra is needed.
+ */
+export const BottomTabInset = Platform.select({ ios: 50, android: 0 }) ?? 0;
 export const MaxContentWidth = 800;
