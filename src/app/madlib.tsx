@@ -66,6 +66,9 @@ export default function MadlibScreen() {
 
   const filling = activeTemplate && step < myPrompts.length;
   const current = words[step] ?? '';
+  const advance = () => {
+    if ((words[step] ?? '').trim()) setStep((s) => s + 1);
+  };
 
   async function send() {
     if (!activeTemplate || !to || !carrier) return;
@@ -110,7 +113,7 @@ export default function MadlibScreen() {
   return (
     <ThemedView style={styles.flex}>
       <Stack.Screen options={{ title: replying ? 'Your turn' : 'Mad Lib' }} />
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {!activeTemplate ? (
             replying ? (
@@ -147,10 +150,19 @@ export default function MadlibScreen() {
               </ThemedText>
               <ThemedText style={[styles.prompt, { color: theme.accent }]}>{myPrompts[step]}</ThemedText>
               <TextInput
+                // a fresh box for every blank, so nothing carries over between steps
+                key={step}
                 autoFocus
                 value={current}
-                onChangeText={(t) => setWords((w) => Object.assign([...w], { [step]: t }))}
-                onSubmitEditing={() => current.trim() && setStep(step + 1)}
+                onChangeText={(t) =>
+                  setWords((w) => {
+                    const next = [...w];
+                    next[step] = t;
+                    return next;
+                  })
+                }
+                onSubmitEditing={advance}
+                submitBehavior="submit"
                 maxLength={40}
                 // words land mid-sentence, so don't capitalise them
                 autoCapitalize="none"
@@ -163,7 +175,7 @@ export default function MadlibScreen() {
                 {step > 0 && (
                   <Button title="Back" variant="secondary" onPress={() => setStep(step - 1)} style={styles.flex} />
                 )}
-                <Button title="Next" onPress={() => setStep(step + 1)} disabled={!current.trim()} style={styles.flex} />
+                <Button title="Next" onPress={advance} disabled={!current.trim()} style={styles.flex} />
               </View>
             </View>
           ) : (
@@ -270,7 +282,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     paddingHorizontal: Spacing.three,
     fontSize: 22,
-    textAlign: 'center',
   },
   footer: {
     padding: Spacing.three,
