@@ -51,10 +51,10 @@ export default function RootLayout() {
 }
 
 /** Once signed in: register for pushes, and keep lost-letter geofences fresh on every open. */
-function useBackgroundServices(ready: boolean, foundAlerts: boolean) {
+function useBackgroundServices(ready: boolean, arrivalAlerts: boolean, foundAlerts: boolean) {
   useEffect(() => {
-    if (ready) registerForPush().catch(() => {});
-  }, [ready]);
+    if (ready && arrivalAlerts) registerForPush().catch(() => {});
+  }, [ready, arrivalAlerts]);
 
   useEffect(() => {
     if (!ready) return;
@@ -77,7 +77,7 @@ function RootStack() {
   const loading = isConfigured && (session === undefined || (session && me === undefined));
   const signedIn = !!session;
   const ready = signedIn && !!me?.home;
-  useBackgroundServices(ready, settings.foundAlerts);
+  useBackgroundServices(ready, settings.arrivalAlerts, settings.foundAlerts);
   useNotificationRouting(ready);
 
   useEffect(() => {
@@ -107,6 +107,7 @@ function RootStack() {
         <Stack.Screen name="found/[legId]" options={{ title: 'Found letter' }} />
         <Stack.Screen name="conversation/[id]" options={{ title: '' }} />
         <Stack.Screen name="carriers" options={{ title: 'Carriers' }} />
+        <Stack.Screen name="carrier/[id]" options={{ title: '' }} />
         <Stack.Screen name="friends" options={{ title: 'Friends' }} />
         <Stack.Screen name="person/[id]" options={{ title: '' }} />
         <Stack.Screen name="archived" options={{ title: 'Archived' }} />

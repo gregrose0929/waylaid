@@ -1,9 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ActionSheet } from '@/components/action-sheet';
 import { Avatar } from '@/components/avatar';
 import { CarrierSheet } from '@/components/carrier-sheet';
 import { Icon } from '@/components/icon';
@@ -137,18 +138,30 @@ function Bubble({ letter, now }: { letter: Letter; now: number }) {
       : letterStatusLine(letter, now, t?.name)
     : null;
 
-  const menu = () =>
-    Alert.alert('Letter', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Archive', onPress: () => actions.archive([letter.id]) },
-      { text: 'Delete', style: 'destructive', onPress: () => actions.remove([letter.id]) },
-    ]);
+  const [menu, setMenu] = useState(false);
+  const openJourney = () => router.push({ pathname: '/letter/[id]', params: { id: letter.id } });
 
   return (
     <View style={[styles.bubbleRow, mine ? styles.right : styles.left]}>
+      <ActionSheet
+        visible={menu}
+        title={letter.body.split('\n')[0]}
+        onClose={() => setMenu(false)}
+        options={[
+          { label: 'See its journey', icon: 'send', onPress: openJourney },
+          ...(mine
+            ? []
+            : [{ label: 'Mark as unread', icon: 'unread' as const, onPress: () => actions.markUnread([letter.id]) }]),
+          { label: 'Archive', icon: 'archive', onPress: () => actions.archive([letter.id]) },
+          { label: 'Delete', icon: 'trash', destructive: true, onPress: () => actions.remove([letter.id]) },
+        ]}
+      />
       <Pressable
-        onPress={() => router.push({ pathname: '/letter/[id]', params: { id: letter.id } })}
-        onLongPress={menu}
+        onPress={openJourney}
+        onLongPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          setMenu(true);
+        }}
         style={({ pressed }) => [
           styles.bubble,
           mine

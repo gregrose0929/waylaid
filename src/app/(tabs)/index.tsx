@@ -28,7 +28,7 @@ const matches = (l: Letter, q: string) =>
 export default function MailScreen() {
   const { mail, found, friends, refreshMail, refreshFriends, transport, settings } = useApp();
   const theme = useTheme();
-  const now = useNow();
+  const now = useNow(10_000);
   const actions = useLetterActions();
   const conversations = settings.mailView === 'conversations';
 

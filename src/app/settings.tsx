@@ -58,13 +58,21 @@ export default function SettingsScreen() {
     }
   }
 
-  async function turnOnPush() {
+  async function setArrivalAlerts(on: boolean) {
+    if (!on) {
+      updateSettings({ arrivalAlerts: false });
+      await unregisterPush();
+      return;
+    }
+    // The phone itself may have notifications blocked for Waylaid.
     if (pushStatus && !pushStatus.granted && !pushStatus.canAskAgain) {
       Linking.openSettings();
       return;
     }
     await registerForPush().catch(() => {});
-    setPushStatus(await Notifications.getPermissionsAsync());
+    const status = await Notifications.getPermissionsAsync();
+    setPushStatus(status);
+    updateSettings({ arrivalAlerts: status.granted });
   }
 
   async function setFoundAlerts(on: boolean) {
@@ -159,14 +167,17 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title="🔔 NOTIFICATIONS">
-          {pushStatus?.granted ? (
-            <Row label="Letter arrivals" detail="On: you’ll know the moment a letter lands" />
-          ) : (
-            <>
-              <Row label="Letter arrivals" detail="Off: you’ll only see new letters when you open the app" />
-              <Button title="Turn on" variant="secondary" onPress={turnOnPush} />
-            </>
-          )}
+          <Toggle
+            label="Letter arrivals"
+            detail={
+              pushStatus && !pushStatus.granted && !pushStatus.canAskAgain
+                ? 'Blocked in your phone’s settings. Flip this on to open them.'
+                : 'A notification the moment a letter lands in your mailbox.'
+            }
+            value={settings.arrivalAlerts && !!pushStatus?.granted}
+            onChange={setArrivalAlerts}
+            tint={theme.accent}
+          />
           <Toggle
             label="Lost letters near me"
             detail="Get a heads-up when you walk near a lost letter, even with the app closed. Uses background location."
@@ -174,9 +185,6 @@ export default function SettingsScreen() {
             onChange={setFoundAlerts}
             tint={theme.accent}
           />
-          <ThemedText type="small" themeColor="textSecondary">
-            You’re never notified when your own letters are delivered or lost. Like real mail, you just wait.
-          </ThemedText>
         </Section>
 
         <Section title="UNITS">

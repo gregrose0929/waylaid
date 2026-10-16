@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -35,6 +36,7 @@ export function TransportPicker({
               Haptics.selectionAsync().catch(() => {});
               onChange(t.id);
             }}
+            onLongPress={() => router.push({ pathname: '/carrier/[id]', params: { id: t.id } })}
             style={[
               styles.row,
               {

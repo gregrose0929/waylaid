@@ -19,11 +19,13 @@ export type Settings = {
   units: Units;
   /** classic mailbox list, or letters grouped into conversations by person */
   mailView: 'mail' | 'conversations';
+  /** push notification when a letter lands in your mailbox */
+  arrivalAlerts: boolean;
   /** notify when you walk near a lost letter (needs background location) */
   foundAlerts: boolean;
 };
 
-const DEFAULT_SETTINGS: Settings = { units: 'mi', mailView: 'mail', foundAlerts: false };
+const DEFAULT_SETTINGS: Settings = { units: 'mi', mailView: 'mail', arrivalAlerts: true, foundAlerts: false };
 const SETTINGS_KEY = 'waylaid.settings';
 const EMPTY_FRIENDS: Friends = { friends: [], incoming: [], outgoing: [], blocked: [] };
 
