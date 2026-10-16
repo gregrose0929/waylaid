@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TransportPicker } from '@/components/transport-picker';
 import { Button, Card, ErrorText, ProgressBar } from '@/components/ui';
-import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api, type MadlibTemplate, type Person } from '@/lib/api';
 import { displayName, formatDuration } from '@/lib/format';
@@ -114,7 +114,7 @@ export default function MadlibScreen() {
     <ThemedView style={styles.flex}>
       <Stack.Screen options={{ title: replying ? 'Your turn' : 'Mad Lib' }} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
           {!activeTemplate ? (
             replying ? (
               <ThemedText themeColor="textSecondary">Loading this Mad Lib…</ThemedText>
@@ -167,10 +167,14 @@ export default function MadlibScreen() {
                 // words land mid-sentence, so don't capitalise them
                 autoCapitalize="none"
                 returnKeyType="next"
-                placeholder="Type a word…"
-                placeholderTextColor={theme.textSecondary}
-                style={[styles.input, { color: theme.text, borderColor: theme.accent, backgroundColor: theme.backgroundElement }]}
+                // No placeholder: on Android a centred box with a placeholder puts the cursor at the far right.
+                style={[styles.input, { color: theme.text, borderBottomColor: theme.accent }]}
+                selectionColor={theme.accent}
+                cursorColor={theme.accent}
               />
+              <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center', marginTop: -Spacing.two }}>
+                write your {myPrompts[step]} on the line
+              </ThemedText>
               <View style={styles.row}>
                 {step > 0 && (
                   <Button title="Back" variant="secondary" onPress={() => setStep(step - 1)} style={styles.flex} />
@@ -276,12 +280,18 @@ const styles = StyleSheet.create({
     fontWeight: 700,
     textAlign: 'center',
   },
+  // A "fill in the blank" line, like writing on a letter.
   input: {
-    minHeight: 56,
-    borderRadius: Radius.medium,
-    borderWidth: 2,
-    paddingHorizontal: Spacing.three,
-    fontSize: 22,
+    alignSelf: 'center',
+    width: '80%',
+    minHeight: 60,
+    borderBottomWidth: 2,
+    paddingHorizontal: Spacing.two,
+    paddingBottom: Spacing.one,
+    fontFamily: Fonts.serif,
+    fontSize: 28,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
   footer: {
     padding: Spacing.three,
