@@ -172,9 +172,6 @@ export default function MadlibScreen() {
                 selectionColor={theme.accent}
                 cursorColor={theme.accent}
               />
-              <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center', marginTop: -Spacing.two }}>
-                write your {myPrompts[step]} on the line
-              </ThemedText>
               <View style={styles.row}>
                 {step > 0 && (
                   <Button title="Back" variant="secondary" onPress={() => setStep(step - 1)} style={styles.flex} />
