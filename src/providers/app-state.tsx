@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { api, type FoundLetter, type Letter, type Me, type Transport } from '@/lib/api';
+import { api, type FoundLetter, type Letter, type Me, type Person, type Transport } from '@/lib/api';
 import type { Units } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
@@ -23,10 +23,14 @@ type AppState = {
   transport: (id: string) => Transport | undefined;
   mail: Letter[];
   found: FoundLetter[];
+  contacts: Person[];
   units: Units;
   setUnits: (u: Units) => void;
   refreshMe: () => Promise<void>;
   refreshMail: () => Promise<void>;
+  refreshContacts: () => Promise<void>;
+  /** set when the profile couldn't be loaded (e.g. offline at launch) */
+  loadError: string | null;
   signOut: () => Promise<void>;
 };
 
@@ -40,6 +44,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [transports, setTransports] = useState<Transport[]>([]);
   const [mail, setMail] = useState<Letter[]>([]);
   const [found, setFound] = useState<FoundLetter[]>([]);
+  const [contacts, setContacts] = useState<Person[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [units, setUnitsState] = useState<Units>('mi');
 
   useEffect(() => {
@@ -50,6 +56,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setMail([]);
         setFound([]);
+        setContacts([]);
       }
     });
     AsyncStorage.getItem(UNITS_KEY)
@@ -62,14 +69,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const userId = session?.user.id;
   const me = session === undefined ? undefined : !userId ? null : profile?.userId === userId ? profile.me : undefined;
 
+  // A failed load leaves `me` undefined (still loading) and sets loadError, rather than
+  // pretending there's no profile and sending the user back through onboarding.
   const refreshMe = useCallback(async () => {
     if (!userId) return;
     try {
+      setLoadError(null);
       setProfile({ userId, me: await api.me() });
-    } catch {
-      setProfile({ userId, me: null });
+      api.transports().then(setTransports).catch(() => {});
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
     }
   }, [userId]);
+
+  const refreshContacts = useCallback(async () => {
+    setContacts(await api.contacts());
+  }, []);
 
   const refreshMail = useCallback(async () => {
     const [m, f] = await Promise.all([api.mail(), api.found()]);
@@ -82,8 +97,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     api
       .me()
       .then((me) => setProfile({ userId, me }))
-      .catch(() => setProfile({ userId, me: null }));
+      .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
     api.transports().then(setTransports).catch(() => {});
+    api.contacts().then(setContacts).catch(() => {});
   }, [userId]);
 
   const setUnits = useCallback((u: Units) => {
@@ -99,15 +115,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       transport: (id) => transports.find((t) => t.id === id),
       mail,
       found,
+      contacts,
       units,
       setUnits,
       refreshMe,
       refreshMail,
+      refreshContacts,
+      loadError,
       signOut: async () => {
         await supabase.auth.signOut();
       },
     }),
-    [session, me, transports, mail, found, units, setUnits, refreshMe, refreshMail],
+    [session, me, transports, mail, found, contacts, units, setUnits, refreshMe, refreshMail, refreshContacts, loadError],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

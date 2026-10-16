@@ -13,13 +13,14 @@ spot can pick it up. Then they decide whether to **peek inside**, **send it on**
 
 ## Features
 
-- **10 carriers**, from 🐌 0.03 mph to 🛩️ 2,200 mph, each with its own failure odds and ways to go wrong
+- **11 carriers**, from 🐌 0.03 mph and a hopeless 🦋 moth to 🛩️ 2,200 mph, each with its own failure odds and ways to go wrong
 - **Real distances** between mailboxes, with great-circle routes and a detour factor for ground travel
 - **Live tracking** of every letter in the air, with ETA countdowns and a moving carrier on the map
 - **Hidden fate**: whether a carrier fails is decided in secret at send time and revealed when the letter is due
 - **Lost & found**: wrecks appear on the map, and you can walk to one, pick it up, and choose what to do with it
 - **Broken seals**: if a stranger reads your letter, both you and the recipient find out
 - **Delivered by hand**: if you find a lost letter addressed to *you*, it counts as delivered
+- **Contacts** with private nicknames, **archive** and **delete** (only from your own mailbox)
 - Read receipts, a journey log for each letter, stats, miles/km, and light/dark mode
 
 ## How it works
@@ -37,7 +38,8 @@ nobody can open a letter early or see their pigeon's fate ahead of time.
 Delivery doesn't need a background job. A letter has "arrived" once `now() >= arrives_at`, and the server checks
 this every time someone asks.
 
-Privacy: mailboxes are stored to about 1 km, and other users only ever see them rounded to about 10 km.
+Mailboxes are precise, so letters go to your actual door. Each person chooses whether others see that exact spot
+(the default) or only a ~10 km area.
 
 ```
 src/
@@ -65,8 +67,8 @@ npm install
 ### 2. Create a Supabase project (free)
 
 1. Sign up at [supabase.com](https://supabase.com) and create a new project.
-2. Open **SQL Editor**, paste the contents of
-   [`supabase/migrations/20261010000000_init.sql`](supabase/migrations/20261010000000_init.sql), and click **Run**.
+2. Open **SQL Editor** and run each file in [`supabase/migrations`](supabase/migrations) **in order** (paste its
+   contents, click **Run**). When a new migration is added later, run just that one.
 3. For easy testing, go to **Authentication → Sign In / Providers → Email** and turn off **Confirm email**. You
    can turn it back on before launch.
 4. Go to **Project Settings → API Keys** (or the **Connect** button) and copy the **Project URL** and the

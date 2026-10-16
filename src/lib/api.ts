@@ -17,11 +17,19 @@ export type Person = {
   id: string;
   username: string;
   display_name: string | null;
+  /** your private name for them, if they're in your contacts */
+  nickname: string | null;
+  is_contact: boolean;
+  has_home: boolean;
 };
 
-export type Me = Person & {
+export type Me = {
+  id: string;
+  username: string;
+  display_name: string | null;
   home: LatLng | null;
   home_label: string | null;
+  share_precise_home: boolean;
   stats: { sent: number; received: number; lost: number; found: number };
 };
 
@@ -54,6 +62,7 @@ export type Letter = {
   id: string;
   role: 'sent' | 'received';
   status: MessageStatus;
+  archived: boolean;
   created_at: string;
   read_at: string | null;
   delivered_at: string | null;
@@ -86,6 +95,8 @@ export type FoundLetter = {
   body: string | null;
 };
 
+export type LetterState = 'inbox' | 'archived' | 'deleted';
+
 export type PickUpResult =
   | { outcome: 'delivered'; message_id: string }
   | { outcome: 'found'; leg_id: string };
@@ -107,8 +118,15 @@ export const api = {
     rpc<void>('save_profile', { p_username: username, p_display_name: displayName }),
   setHome: (lat: number, lng: number, label: string) =>
     rpc<void>('set_home', { p_lat: lat, p_lng: lng, p_label: label }),
-  findUsers: (query: string) =>
-    rpc<(Person & { has_home: boolean })[]>('find_users', { p_query: query }),
+  setSharePreciseHome: (share: boolean) => rpc<void>('set_share_precise_home', { p_share: share }),
+  deleteAccount: () => rpc<void>('delete_account'),
+  findUsers: (query: string) => rpc<Person[]>('find_users', { p_query: query }),
+  contacts: () => rpc<Person[]>('get_contacts'),
+  saveContact: (personId: string, nickname: string) =>
+    rpc<void>('save_contact', { p_contact: personId, p_nickname: nickname }),
+  removeContact: (personId: string) => rpc<void>('remove_contact', { p_contact: personId }),
+  setLetterState: (messageId: string, state: LetterState) =>
+    rpc<void>('set_letter_state', { p_message: messageId, p_state: state }),
   quoteDistance: (recipientId: string, from?: { lat: number; lng: number }) =>
     rpc<number>('quote_distance', {
       p_recipient: recipientId,

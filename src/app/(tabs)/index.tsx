@@ -54,8 +54,9 @@ export default function MailScreen() {
     return () => clearTimeout(id);
   }, [nextArrival, refresh]);
 
-  const inbox = mail.filter((l) => l.role === 'received');
-  const sent = mail.filter((l) => l.role === 'sent');
+  const inbox = mail.filter((l) => l.role === 'received' && !l.archived);
+  const sent = mail.filter((l) => l.role === 'sent' && !l.archived);
+  const archivedCount = mail.filter((l) => l.archived).length;
   const unread = inbox.filter((l) => l.status === 'delivered' && !l.read_at).length;
   const satchel = found.filter((f) => !f.forwarded && f.status !== 'delivered');
 
@@ -108,6 +109,15 @@ export default function MailScreen() {
             renderItem={({ item }) => <LetterRow letter={item} now={now} />}
             ListHeaderComponent={header}
             ListEmptyComponent={empty}
+            ListFooterComponent={
+              archivedCount > 0 ? (
+                <Pressable onPress={() => router.push('/archived')} style={styles.archivedLink}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    🗄️ Archived ({archivedCount}) ›
+                  </ThemedText>
+                </Pressable>
+              ) : null
+            }
             contentContainerStyle={styles.list}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           />
@@ -185,6 +195,10 @@ const styles = StyleSheet.create({
   fabText: {
     fontWeight: 700,
     fontSize: 16,
+  },
+  archivedLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.three,
   },
   foundRow: {
     flexDirection: 'row',

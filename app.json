@@ -20,7 +20,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.waylaid.app"
+      "package": "com.waylaid.app",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -57,6 +61,12 @@
         "projectId": "127e4950-c36c-4059-8e1b-d71025ebcacc"
       }
     },
-    "owner": "gregrose0929"
+    "owner": "gregrose0929",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/127e4950-c36c-4059-8e1b-d71025ebcacc"
+    }
   }
 }

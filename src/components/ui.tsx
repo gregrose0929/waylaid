@@ -46,12 +46,25 @@ export function Button({ title, variant = 'primary', loading, disabled, style, .
   );
 }
 
-export function Card({ children, style, onPress }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void }) {
+export function Card({
+  children,
+  style,
+  onPress,
+  onLongPress,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  onPress?: () => void;
+  onLongPress?: () => void;
+}) {
   const theme = useTheme();
   const cardStyle = [styles.card, { backgroundColor: theme.backgroundElement }, style];
-  if (!onPress) return <View style={cardStyle}>{children}</View>;
+  if (!onPress && !onLongPress) return <View style={cardStyle}>{children}</View>;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [cardStyle, pressed && { opacity: 0.8 }]}>
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={({ pressed }) => [cardStyle, pressed && { opacity: 0.8 }]}>
       {children}
     </Pressable>
   );

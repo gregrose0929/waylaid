@@ -64,5 +64,6 @@ export function formatAgo(iso: string, now = Date.now()): string {
   return `${formatDuration(ms)} ago`;
 }
 
-export const displayName = (p: { username: string; display_name: string | null }) =>
-  p.display_name || `@${p.username}`;
+/** Your nickname for them, else their own display name, else @username. */
+export const displayName = (p: { username: string; display_name: string | null; nickname?: string | null }) =>
+  p.nickname || p.display_name || `@${p.username}`;

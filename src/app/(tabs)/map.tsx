@@ -33,11 +33,14 @@ export default function MapScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const lastScan = useRef<LatLng | null>(null);
+  // Frame the camera once, after the first scan; never yank it around while someone is panning.
+  const [framed, setFramed] = useState(false);
 
   const scan = useCallback(async (at: LatLng) => {
     lastScan.current = at;
     try {
       setWrecks(await api.nearbyWrecks(at[0], at[1]));
+      setFramed(true);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -149,7 +152,7 @@ export default function MapScreen() {
         pins={pins}
         showsUserLocation
         fit={here ? [here, ...wrecks.slice(0, 3).map((w) => w.coords)] : []}
-        fitKey={here ? `${wrecks.length}` : undefined}
+        fitKey={framed ? 'first-scan' : undefined}
       />
 
       <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overlay}>

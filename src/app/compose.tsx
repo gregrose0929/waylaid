@@ -15,19 +15,19 @@ import { displayName, formatDistance, formatDuration } from '@/lib/format';
 import { estimateTripMs } from '@/lib/trip';
 import { useApp } from '@/providers/app-state';
 
-type Recipient = Person & { has_home: boolean };
-
 export default function ComposeScreen() {
-  const params = useLocalSearchParams<{ to?: string; username?: string; name?: string }>();
-  const { transport, units, refreshMail, refreshMe } = useApp();
+  const params = useLocalSearchParams<{ to?: string }>();
+  const { transport, units, refreshMail, refreshMe, contacts, mail } = useApp();
   const theme = useTheme();
 
   const [query, setQuery] = useState('');
-  const [found, setFound] = useState<{ query: string; users: Recipient[] }>({ query: '', users: [] });
-  const [to, setTo] = useState<Recipient | null>(
-    params.to && params.username
-      ? { id: params.to, username: params.username, display_name: params.name || null, has_home: true }
-      : null,
+  const [found, setFound] = useState<{ query: string; users: Person[] }>({ query: '', users: [] });
+  // Replying or writing from a contact: find who they are among people we already know.
+  const [to, setTo] = useState<Person | null>(
+    () =>
+      contacts.find((c) => c.id === params.to) ??
+      mail.find((l) => l.other.id === params.to)?.other ??
+      null,
   );
   const [quote, setQuote] = useState<{ recipientId: string; km: number } | null>(null);
   const [body, setBody] = useState('');
@@ -38,7 +38,7 @@ export default function ComposeScreen() {
 
   // Search usernames as you type.
   const searching = !to && query.trim().length > 0;
-  const results = searching && found.query === query ? found.users : [];
+  const results = searching && found.query === query ? found.users : !to && !searching ? contacts : [];
   useEffect(() => {
     if (!searching) return;
     let cancelled = false;
@@ -130,13 +130,18 @@ export default function ComposeScreen() {
             <View style={{ gap: Spacing.two }}>
               <Field
                 label="To"
-                placeholder="Search by username"
+                placeholder="Search usernames or contacts"
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus
                 value={query}
                 onChangeText={setQuery}
               />
+              {!searching && results.length > 0 && (
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  CONTACTS
+                </ThemedText>
+              )}
               {results.map((r) => (
                 <Card
                   key={r.id}
@@ -147,9 +152,10 @@ export default function ComposeScreen() {
                     setError(null);
                   }}
                   style={!r.has_home && { opacity: 0.5 }}>
-                  <ThemedText style={{ fontWeight: 700 }}>@{r.username}</ThemedText>
+                  <ThemedText style={{ fontWeight: 700 }}>{displayName(r)}</ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
-                    {r.has_home ? (r.display_name ?? ' ') : "Hasn't set up a mailbox yet"}
+                    @{r.username}
+                    {r.has_home ? '' : ' · hasn’t set up a mailbox yet'}
                   </ThemedText>
                 </Card>
               ))}

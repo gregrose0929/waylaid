@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 import type { Letter } from '@/lib/api';
 import { displayName, formatDuration, formatWhen } from '@/lib/format';
 import { progress } from '@/lib/geo';
+import { showLetterMenu } from '@/lib/letter-actions';
 import { useApp } from '@/providers/app-state';
 
 export function currentLeg(letter: Letter) {
@@ -15,7 +16,7 @@ export function currentLeg(letter: Letter) {
 }
 
 export function LetterRow({ letter, now }: { letter: Letter; now: number }) {
-  const { transport } = useApp();
+  const { transport, refreshMail } = useApp();
   const theme = useTheme();
   const leg = currentLeg(letter);
   const t = transport(leg.transport_id);
@@ -53,7 +54,9 @@ export function LetterRow({ letter, now }: { letter: Letter; now: number }) {
     letter.status === 'lost' ? '🪦' : letter.status === 'found' ? '🫳' : letter.status === 'delivered' ? '✉️' : (t?.emoji ?? '✉️');
 
   return (
-    <Card onPress={() => router.push({ pathname: '/letter/[id]', params: { id: letter.id } })}>
+    <Card
+      onPress={() => router.push({ pathname: '/letter/[id]', params: { id: letter.id } })}
+      onLongPress={() => showLetterMenu(letter, refreshMail)}>
       <View style={styles.row}>
         <ThemedText style={styles.icon}>{icon}</ThemedText>
         <View style={{ flex: 1, gap: 2 }}>

@@ -71,7 +71,8 @@ test('profiles and mailboxes', async () => {
   await as(B, `select set_home(39.1031, -84.5120, 'Cincinnati, OH')`);
 
   const me = await as(A, `select get_me()`);
-  assert.deepEqual(me.home, [39.96, -86.01], 'home is stored to ~1 km');
+  assert.deepEqual(me.home, [39.9568, -86.0134], 'home is stored precisely');
+  assert.equal(me.share_precise_home, true, 'precise by default');
   const found = await as(A, `select find_users('k')`);
   assert.deepEqual(found.map((u) => u.username), ['kate']);
   const km = await as(A, `select quote_distance('${B}')`);
@@ -89,7 +90,12 @@ test('a letter stays sealed until it arrives', async () => {
   let seen = await mailOf(B, id);
   assert.equal(seen.status, 'in_transit');
   assert.equal(seen.body, null, 'recipient cannot read it in transit');
-  assert.deepEqual(seen.legs[0].origin, [40, -86], 'other people see homes to ~10 km');
+  assert.deepEqual(seen.legs[0].origin, [39.9568, -86.0134], 'precise mailbox is shared by default');
+  await as(A, `select set_share_precise_home(false)`);
+  seen = await mailOf(B, id);
+  assert.deepEqual(seen.legs[0].origin, [40, -86], 'opting out shows only a ~10 km area');
+  assert.deepEqual((await mailOf(A, id)).legs[0].origin, [39.9568, -86.0134], 'you always see your own exactly');
+  await as(A, `select set_share_precise_home(true)`);
 
   await shiftLeg(leg, '3 hours', '-1 minute');
   seen = await mailOf(B, id);
@@ -195,6 +201,58 @@ test('fate rolls match the failure rate and land on the route', async () => {
   assert.ok(r.lo >= 0.05 && r.hi <= 0.95, 'never fails right at either mailbox');
 });
 
+test('the moth is slow and rarely makes it', async () => {
+  const moth = (await db.query(`select * from transports where id = 'moth'`)).rows[0];
+  assert.ok(moth.speed_kmh < 5 && moth.failure_rate > 0.8);
+  const order = (await db.query(`select id from transports order by sort`)).rows.map((r) => r.id);
+  assert.deepEqual(order.slice(0, 3), ['snail', 'moth', 'walk']);
+});
+
+test('contacts have private nicknames', async () => {
+  await as(A, `select save_contact('${B}', 'Kate Rose')`);
+  const contacts = await as(A, `select get_contacts()`);
+  assert.deepEqual(contacts.map((c) => [c.username, c.nickname]), [['kate', 'Kate Rose']]);
+  assert.deepEqual((await as(A, `select find_users('rose')`)).map((u) => u.username), ['kate'], 'search by nickname');
+  const letter = (await as(A, `select get_mail()`)).find((l) => l.other.id === B);
+  assert.equal(letter.other.nickname, 'Kate Rose');
+  assert.equal((await as(C, `select find_users('kate')`))[0].nickname, null, 'nicknames are private');
+  await rejects(as(A, `select save_contact('${A}', 'me')`), /you/);
+  await as(A, `select remove_contact('${B}')`);
+  assert.equal((await as(A, `select get_contacts()`)).length, 0);
+});
+
+test('archive and delete only touch your own mailbox', async () => {
+  const id = await as(A, `select send_message('${B}', 'Archive me', 'car')`);
+  await as(B, `select set_letter_state('${id}', 'archived')`);
+  assert.equal((await mailOf(B, id)).archived, true);
+  await as(B, `select set_letter_state('${id}', 'inbox')`);
+  assert.equal((await mailOf(B, id)).archived, false);
+  await as(B, `select set_letter_state('${id}', 'deleted')`);
+  assert.equal(await mailOf(B, id), undefined, 'gone for the recipient');
+  assert.ok(await mailOf(A, id), 'sender still has it');
+  await rejects(as(C, `select set_letter_state('${id}', 'deleted')`), /isn't yours/);
+});
+
+test('deleting an account removes the person but not letters they carried', async () => {
+  const D = '00000000-0000-0000-0000-00000000000d';
+  await db.exec(`insert into auth.users values ('${D}')`);
+  await as(D, `select save_profile('ghost', null)`);
+  await as(D, `select set_home(39.5, -85.5, null)`);
+  // D picks up and forwards one of A's letters, then leaves.
+  const id = await as(A, `select send_message('${B}', 'Carried by a ghost', 'pigeon')`);
+  const leg = await legOf(id);
+  await shiftLeg(leg, '1 hour', '1 hour');
+  await forceFailure(leg, 0.5, 'Snatched by a hawk');
+  const [lat, lng] = (await db.query(`select ST_Y(fail_point::geometry) lat, ST_X(fail_point::geometry) lng from leg_fates where leg_id = $1`, [leg])).rows.map((r) => [r.lat, r.lng])[0];
+  await as(D, `select pick_up('${leg}', $1, $2)`, [lat, lng]);
+  await as(D, `select forward_found('${leg}', 'car', $1, $2)`, [lat, lng]);
+  await as(D, `select delete_account()`);
+  assert.equal((await db.query(`select count(*)::int n from profiles where id = '${D}'`)).rows[0].n, 0);
+  const letter = await mailOf(A, id);
+  assert.equal(letter.legs.length, 2, 'the forwarded leg survives');
+  assert.equal(letter.legs[1].carrier, 'stranger');
+});
+
 test('clients cannot touch tables or private helpers', async () => {
   // Supabase grants table access to these roles by default; RLS must still hide everything.
   await db.exec(`grant usage on schema public to anon, authenticated;
@@ -203,13 +261,14 @@ test('clients cannot touch tables or private helpers', async () => {
   for (const role of ['anon', 'authenticated']) {
     await db.exec(`set role ${role}`);
     try {
-      for (const table of ['profiles', 'messages', 'legs', 'leg_fates']) {
+      for (const table of ['profiles', 'messages', 'legs', 'leg_fates', 'contacts', 'mailbox_flags']) {
         const { rows } = await db.query(`select count(*)::int n from ${table}`);
         assert.equal(rows[0].n, 0, `${role} must not read ${table}`);
       }
       assert.ok((await db.query(`select count(*)::int n from transports`)).rows[0].n > 0, 'carriers are public');
       await rejects(db.query(`select _message_status(gen_random_uuid())`), /permission denied/);
       await rejects(db.query(`select _create_leg(null, null, 'car', null, null)`), /permission denied/);
+      await rejects(db.query(`select _person(gen_random_uuid(), gen_random_uuid())`), /permission denied/);
       if (role === 'anon') await rejects(db.query(`select get_mail()`), /permission denied/);
       else await db.query(`select get_mail()`);
     } finally {

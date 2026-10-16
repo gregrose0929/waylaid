@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { currentLeg } from '@/components/letter-row';
 import { SlowMap, type MapPin, type MapRoute } from '@/components/slow-map';
@@ -13,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { api, type Leg, type Letter } from '@/lib/api';
 import { displayName, formatDistance, formatDuration, formatWhen } from '@/lib/format';
 import { greatCircle, interpolate, progress } from '@/lib/geo';
+import { confirmDelete, toggleArchive } from '@/lib/letter-actions';
 import { useApp } from '@/providers/app-state';
 
 export default function LetterScreen() {
@@ -32,7 +33,7 @@ export default function LetterScreen() {
 }
 
 function LetterView({ letter, now }: { letter: Letter; now: number }) {
-  const { transport, units } = useApp();
+  const { transport, units, refreshMail } = useApp();
   const theme = useTheme();
   const leg = currentLeg(letter);
   const t = transport(leg.transport_id);
@@ -61,13 +62,53 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <Stack.Screen options={{ title: letter.role === 'sent' ? `To ${who}` : `From ${who}` }} />
+      <Stack.Screen
+        options={{
+          title: letter.role === 'sent' ? `To ${who}` : `From ${who}`,
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              <Pressable
+                hitSlop={8}
+                accessibilityLabel={letter.archived ? 'Unarchive' : 'Archive'}
+                onPress={() => toggleArchive(letter, refreshMail).then(() => router.back(), () => {})}>
+                <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                  {letter.archived ? 'Unarchive' : 'Archive'}
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                hitSlop={8}
+                accessibilityLabel="Delete"
+                onPress={() => confirmDelete(letter, refreshMail).then((gone) => gone && router.back())}>
+                <ThemedText type="smallBold" themeColor="danger">
+                  Delete
+                </ThemedText>
+              </Pressable>
+            </View>
+          ),
+        }}
+      />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.map, { backgroundColor: theme.backgroundElement }]}>
           <SlowMap routes={routes} pins={[...pins, ...movingPin]} fit={fit} fitKey={letter.id} />
         </View>
 
         <StatusBanner letter={letter} now={now} />
+
+        <Card style={styles.person}>
+          <View style={{ flex: 1 }}>
+            <ThemedText style={{ fontWeight: 700 }}>{who}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              @{letter.other.username}
+            </ThemedText>
+          </View>
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.push({ pathname: '/contact/[id]', params: { id: letter.other.id } })}>
+            <ThemedText type="smallBold" style={{ color: theme.accent }}>
+              {letter.other.is_contact ? 'Edit contact' : 'Add contact'}
+            </ThemedText>
+          </Pressable>
+        </Card>
 
         {inTransit && (
           <Card>
@@ -117,7 +158,7 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
             onPress={() =>
               router.push({
                 pathname: '/compose',
-                params: { to: letter.other.id, username: letter.other.username, name: letter.other.display_name ?? '' },
+                params: { to: letter.other.id },
               })
             }
           />
@@ -246,6 +287,14 @@ const styles = StyleSheet.create({
   signature: {
     textAlign: 'right',
     fontStyle: 'italic',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: Spacing.three,
+  },
+  person: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   legRow: {
     flexDirection: 'row',

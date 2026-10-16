@@ -35,7 +35,7 @@ export default function OnboardingScreen() {
 
   const plantMailbox = () =>
     run(async () => {
-      const here = await getHere();
+      const here = await getHere({ precise: true });
       const label = (await placeName(here.lat, here.lng)) ?? '';
       await api.setHome(here.lat, here.lng, label);
     });
@@ -87,8 +87,9 @@ export default function OnboardingScreen() {
               </View>
               <Card>
                 <ThemedText type="small" themeColor="textSecondary">
-                  🔒 We only save your location to about 1 km, and other people only ever see it to about 10 km.
-                  You can move your mailbox later.
+                  📍 Your mailbox goes exactly where you’re standing, so plant it at home. People you write
+                  to can see where it is; you can switch to showing just your general area in Me → Mailbox, and
+                  move your mailbox any time.
                 </ThemedText>
               </Card>
               <View style={{ gap: Spacing.three }}>
