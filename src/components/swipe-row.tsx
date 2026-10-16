@@ -106,7 +106,11 @@ export const SwipeRow = memo(function SwipeRow({
       });
     });
 
-  const progress = (v: number, w: number) => Math.min(Math.abs(v) / ((w || 360) * ARM_AT), 1);
+  // Runs on the UI thread inside the animated styles below, so it must be a worklet.
+  const progress = (v: number, w: number) => {
+    'worklet';
+    return Math.min(Math.abs(v) / ((w || 360) * ARM_AT), 1);
+  };
 
   const wrapStyle = useAnimatedStyle(() =>
     height.value < 0 ? {} : { height: height.value, opacity: height.value / (naturalHeight.value || 1) },
