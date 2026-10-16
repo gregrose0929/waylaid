@@ -122,7 +122,15 @@ npm run lint
 ## Building an installable app
 
 [EAS Build](https://docs.expo.dev/build/introduction/) compiles the app in the cloud. The Supabase URL and
-publishable key are set in [`eas.json`](eas.json), because `.env` isn't uploaded.
+publishable key are set in [`eas.json`](eas.json) for builds, because `.env` isn't uploaded, **and** as EAS
+environment variables (`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_KEY`) for over-the-air updates, which
+don't read `eas.json`. Without the latter, an update ships a bundle that shows the "Almost there" setup screen.
+
+Publish an over-the-air update (JS-only changes) with:
+
+```bash
+npx eas-cli@latest update --channel preview --environment preview --message "What changed"
+```
 
 Push notifications use Firebase: `google-services.json` sits in the project root (safe to commit), and the FCM V1
 service-account key is uploaded to the project's credentials on expo.dev (never commit that one). Arrival pushes are
