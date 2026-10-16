@@ -5,7 +5,9 @@ import { ThemedText } from '@/components/themed-text';
 import { TransportPicker } from '@/components/transport-picker';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import type { Weather } from '@/lib/api';
 import { formatDistance } from '@/lib/format';
+import { weatherLook } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
 
 /** Bottom sheet for choosing a carrier, used by the conversation reply bar. */
@@ -15,7 +17,9 @@ export function CarrierSheet({
   value,
   onChange,
   onClose,
+  weather,
 }: {
+  weather?: Weather | null;
   visible: boolean;
   distanceKm: number | null;
   value: string;
@@ -32,9 +36,11 @@ export function CarrierSheet({
         <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <ThemedText type="smallBold" themeColor="textSecondary" style={{ paddingHorizontal: Spacing.three }}>
           CHOOSE A CARRIER{distanceKm != null ? ` · ${formatDistance(distanceKm, units).toUpperCase()}` : ''}
+          {weather ? ` · ${weatherLook(weather).emoji} ${weatherLook(weather).label.toUpperCase()}` : ''}
         </ThemedText>
         <ScrollView contentContainerStyle={{ padding: Spacing.three }}>
           <TransportPicker
+            weather={weather}
             distanceKm={distanceKm}
             value={value}
             onChange={(id) => {

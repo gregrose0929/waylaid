@@ -58,6 +58,14 @@
           "color": "#C0452F",
           "defaultChannel": "letters"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Waylaid lets you attach a photo to make your letter a postcard.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

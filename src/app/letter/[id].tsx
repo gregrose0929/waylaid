@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
 import { currentLeg } from '@/components/letter-row';
+import { Postcard } from '@/components/postcard';
 import { SlowMap, type MapPin, type MapRoute } from '@/components/slow-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,6 +17,7 @@ import { activityAt, api, isUnread, type Leg, type Letter } from '@/lib/api';
 import { displayName, formatDistance, formatDuration, formatWhen } from '@/lib/format';
 import { greatCircle, interpolate, progress } from '@/lib/geo';
 import { useLetterActions } from '@/lib/letter-actions';
+import { weatherLook } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
 
 export default function LetterScreen() {
@@ -140,8 +142,9 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
           </Card>
         )}
 
+        {letter.photo_path && <Postcard path={letter.photo_path} height={260} />}
         <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
-          <ThemedText style={styles.letter}>{letter.body}</ThemedText>
+          {!!letter.body && <ThemedText style={styles.letter}>{letter.body}</ThemedText>}
           <ThemedText style={[styles.letter, styles.signature]} themeColor="textSecondary">
             — {letter.role === 'sent' ? 'you' : who}
           </ThemedText>
@@ -212,13 +215,14 @@ function LegRow({ leg, letter }: { leg: Leg; letter: Letter }) {
   const t = transport(leg.transport_id);
   const who =
     leg.carrier === 'you' ? 'You' : leg.carrier === 'sender' ? (letter.role === 'sent' ? 'You' : displayName(letter.other)) : 'A stranger';
+  const near = leg.last_seen_town ? ` near ${leg.last_seen_town}` : '';
   const outcome: Record<Leg['outcome'], string> = {
     in_transit: `Due ${formatWhen(leg.arrives_at)}`,
     overdue: `Was due ${formatWhen(leg.arrives_at)}`,
     arrived: 'Delivered',
-    lost: `Lost · ${leg.fail_reason}`,
-    forwarded: `${leg.fail_reason} · a stranger picked it up and sent it on`,
-    found_by_recipient: `${leg.fail_reason} · the recipient found it themselves!`,
+    lost: `Lost · ${leg.fail_reason}${near}`,
+    forwarded: `${leg.fail_reason}${near} · a stranger picked it up and sent it on`,
+    found_by_recipient: `${leg.fail_reason}${near} · the recipient found it themselves!`,
   };
   return (
     <Card style={styles.legRow}>
@@ -229,6 +233,9 @@ function LegRow({ leg, letter }: { leg: Leg; letter: Letter }) {
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           {formatWhen(leg.departed_at)} · {formatDistance(leg.distance_km, units)}
+          {leg.weather && leg.weather !== 'clear' && leg.weather !== 'cloudy'
+            ? ` · ${weatherLook(leg.weather).emoji} ${weatherLook(leg.weather).label.toLowerCase()}`
+            : ''}
         </ThemedText>
         <ThemedText type="small" themeColor={leg.outcome === 'lost' ? 'danger' : 'textSecondary'}>
           {outcome[leg.outcome]}

@@ -162,7 +162,9 @@ export default function MapScreen() {
         <View style={[styles.chip, { backgroundColor: theme.background }]}>
           <ThemedText type="smallBold">
             {flying.length > 0 ? `${flying.length} in the air` : 'Nothing in the air'} ·{' '}
-            {wrecks.length === 0 ? 'no lost letters nearby' : `${wrecks.length} lost letter${wrecks.length > 1 ? 's' : ''} nearby`}
+            {wrecks.length === 0
+              ? 'no lost letters out there'
+              : `${wrecks.length} lost letter${wrecks.length > 1 ? 's' : ''} out there`}
           </ThemedText>
         </View>
       </SafeAreaView>
@@ -175,7 +177,8 @@ export default function MapScreen() {
               <ThemedText style={{ fontSize: 32, lineHeight: 40 }}>{transport(selected.transport_id)?.emoji ?? '📜'}</ThemedText>
               <View style={{ flex: 1 }}>
                 <ThemedText style={{ fontWeight: 700 }}>
-                  A {transport(selected.transport_id)?.name ?? 'carrier'} went down here
+                  A {transport(selected.transport_id)?.name ?? 'carrier'} went down
+                  {selected.town ? ` near ${selected.town}` : ' here'}
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {selected.fail_reason} · {formatAgo(selected.lost_at, now)}
@@ -188,7 +191,7 @@ export default function MapScreen() {
             ) : (
               <View style={styles.row}>
                 <Button
-                  title="Walk there"
+                  title={selected.live_m < 5000 ? 'Walk there' : 'Get directions'}
                   variant="secondary"
                   onPress={() => directions(selected.coords)}
                   style={{ flex: 1 }}
@@ -212,7 +215,7 @@ export default function MapScreen() {
           </>
         ) : (
           <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
-            When a carrier goes down, its letter lies where it fell. Walk over one and you can pick it up.
+            When a friend’s carrier goes down, its letter ends up in a nearby town. Get close and you can pick it up.
           </ThemedText>
         )}
       </View>

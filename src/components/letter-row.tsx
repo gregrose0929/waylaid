@@ -25,12 +25,14 @@ export function letterStatusLine(letter: Letter, now: number, carrierName?: stri
     case 'overdue':
       return 'Should have arrived by now…';
     case 'delivered':
-      if (letter.role === 'received') return firstLine(letter.body);
+      if (letter.role === 'received') return preview(letter);
       return letter.read_at ? `Read ${formatWhen(letter.read_at)}` : `Delivered ${formatWhen(activityAt(letter))}`;
   }
 }
 
 const firstLine = (s: string) => s.split('\n').find((l) => l.trim()) ?? '';
+/** First line of the letter, or a note that it's a photo-only postcard. */
+const preview = (l: Letter) => firstLine(l.body) || (l.photo_path ? '📷 Postcard' : '');
 
 type RowProps = {
   now: number;
@@ -108,7 +110,7 @@ export function ConversationRow({ convo, now, selecting, selected, onPress, onLo
             style={[styles.preview, convo.unread > 0 && { fontWeight: 700 }]}
             numberOfLines={1}>
             {last.role === 'sent' ? 'You: ' : ''}
-            {last.status === 'delivered' ? firstLine(last.body) : line}
+            {last.status === 'delivered' ? preview(last) : line}
           </ThemedText>
           {convo.unread > 0 && (
             <View style={[styles.badge, { backgroundColor: theme.accent }]}>

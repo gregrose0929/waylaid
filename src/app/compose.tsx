@@ -5,6 +5,8 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
+import { Icon } from '@/components/icon';
+import { Postcard } from '@/components/postcard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TransportPicker } from '@/components/transport-picker';
@@ -13,12 +15,14 @@ import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api, type Person } from '@/lib/api';
 import { displayName, formatDistance, formatDuration } from '@/lib/format';
+import { pickPhoto, uploadPostcard } from '@/lib/postcards';
 import { estimateTripMs } from '@/lib/trip';
+import { weatherAt, type WeatherNow } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
 
 export default function ComposeScreen() {
   const params = useLocalSearchParams<{ to?: string }>();
-  const { transport, units, refreshMail, refreshMe, friends } = useApp();
+  const { me, transport, units, refreshMail, refreshMe, friends, weatherEffect } = useApp();
   const theme = useTheme();
 
   const [query, setQuery] = useState('');
@@ -30,6 +34,15 @@ export default function ComposeScreen() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ emoji: string; eta: number } | null>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [weather, setWeather] = useState<WeatherNow | null>(null);
+
+  // The weather where the letter sets off (your mailbox) affects every carrier differently.
+  const home = me?.home;
+  useEffect(() => {
+    if (!home) return;
+    weatherAt(home[0], home[1]).then(setWeather);
+  }, [home]);
 
   const q = query.trim().toLowerCase();
   const results = friends.friends.filter(
@@ -51,10 +64,12 @@ export default function ComposeScreen() {
     setSending(true);
     setError(null);
     try {
-      await api.send(to.id, body, carrier);
+      const photoPath = photo && me ? await uploadPostcard(photo, me.id) : null;
+      await api.send(to.id, body, carrier, weather?.kind, photoPath);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       const t = transport(carrier);
-      setSent({ emoji: t?.emoji ?? '✉️', eta: t && distanceKm != null ? estimateTripMs(distanceKm, t) : 0 });
+      const fx = weatherEffect(weather?.kind, carrier);
+      setSent({ emoji: t?.emoji ?? '✉️', eta: t && distanceKm != null ? estimateTripMs(distanceKm, t, fx) : 0 });
       refreshMail().catch(() => {});
       refreshMe().catch(() => {});
     } catch (e) {
@@ -80,7 +95,7 @@ export default function ComposeScreen() {
   }
 
   const chosen = carrier ? transport(carrier) : undefined;
-  const canSend = !!to && !!carrier && body.trim().length > 0 && distanceKm != null;
+  const canSend = !!to && !!carrier && (body.trim().length > 0 || !!photo) && distanceKm != null;
 
   return (
     <ThemedView style={styles.flex}>
@@ -162,27 +177,69 @@ export default function ComposeScreen() {
             </View>
           )}
 
-          {/* Letter */}
+          {/* Letter (and optional postcard photo) */}
+          {photo && (
+            <View>
+              <Postcard uri={photo} />
+              <Pressable
+                onPress={() => setPhoto(null)}
+                accessibilityLabel="Remove photo"
+                style={[styles.removePhoto, { backgroundColor: theme.text }]}>
+                <Icon name="close" size={18} color={theme.background} />
+              </Pressable>
+            </View>
+          )}
           <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
             <TextInput
               multiline
-              placeholder="Dear friend…"
+              placeholder={photo ? 'Wish you were here…' : 'Dear friend…'}
               placeholderTextColor={theme.textSecondary}
               value={body}
               onChangeText={setBody}
               maxLength={2000}
               style={[styles.letter, { color: theme.text }]}
             />
-            <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'right' }}>
-              {body.length}/2000
-            </ThemedText>
+            <View style={styles.paperFooter}>
+              {!photo && Platform.OS !== 'web' && (
+                <Pressable
+                  onPress={() =>
+                    pickPhoto()
+                      .then((uri) => uri && setPhoto(uri))
+                      .catch((e) => setError(String(e)))
+                  }
+                  style={styles.addPhoto}
+                  accessibilityRole="button">
+                  <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                    📷 Make it a postcard
+                  </ThemedText>
+                </Pressable>
+              )}
+              <ThemedText type="small" themeColor="textSecondary" style={{ marginLeft: 'auto' }}>
+                {body.length}/2000
+              </ThemedText>
+            </View>
           </View>
 
-          {/* Carrier */}
+          {/* Weather + carrier */}
+          {weather && (
+            <Card style={styles.weather}>
+              <ThemedText style={{ fontSize: 28, lineHeight: 34 }}>{weather.emoji}</ThemedText>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={{ fontWeight: 700 }}>
+                  {weather.label} at your mailbox{weather.tempC != null ? ` · ${Math.round(weather.tempC)}°C` : ''}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {weather.kind === 'clear' || weather.kind === 'cloudy'
+                    ? 'Good flying weather.'
+                    : 'Some carriers handle this better than others.'}
+                </ThemedText>
+              </View>
+            </Card>
+          )}
           <ThemedText type="smallBold" themeColor="textSecondary">
             CHOOSE A CARRIER
           </ThemedText>
-          <TransportPicker distanceKm={distanceKm} value={carrier} onChange={setCarrier} />
+          <TransportPicker distanceKm={distanceKm} value={carrier} onChange={setCarrier} weather={weather?.kind} />
         </ScrollView>
 
         <SafeAreaView edges={['bottom']} style={[styles.footer, { borderColor: theme.border }]}>
@@ -207,6 +264,28 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
+  },
+  removePhoto: {
+    position: 'absolute',
+    top: Spacing.two,
+    right: Spacing.two,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paperFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addPhoto: {
+    paddingVertical: Spacing.one,
+  },
+  weather: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
   },
   toCard: {
     flexDirection: 'row',

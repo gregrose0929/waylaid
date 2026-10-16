@@ -27,6 +27,13 @@ spot can pick it up. Then they decide whether to **peek inside**, **send it on**
 - Gmail-style tools: long-press to multi-select, swipe to archive or delete, undo, search, unread filter, mark unread,
   pin and mute conversations
 - **Notifications** only when a letter arrives, and (opt-in) when you walk near a lost letter
+- **Lost letters land in towns**: a fallen carrier's letter is pulled into the nearest town (within 25 km) so
+  people can actually reach it, and your map shows every lost letter between your friends, wherever it fell
+- **Achievements** with silly names; everyone starts with the snail, moth, foot courier and pigeon, and unlocks
+  faster carriers by playing (the SR-71 comes last: *"Wow, it's almost like instant messaging"*)
+- **Weather**: live weather where a letter sets off changes each carrier's speed and risk (snails love rain)
+- **Photo postcards**: attach a photo; finders only see it if they break the seal
+- **Carrier profiles**: every carrier has a (fictional) personnel file: nickname, likes, fears, origin story
 - Read receipts, a journey log for each letter, stats, miles/km, and light/dark mode
 
 ## How it works
@@ -135,6 +142,11 @@ npx eas-cli@latest build --platform android --profile preview
 ```
 
 iPhone builds need an Apple Developer account.
+
+## Credits
+
+- Town data: [GeoNames](https://www.geonames.org) (cities with 15,000+ people), CC BY 4.0
+- Weather: [Open-Meteo](https://open-meteo.com)
 
 ## Ideas for later
 

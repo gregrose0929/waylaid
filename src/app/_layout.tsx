@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { AppState, StyleSheet, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { AchievementCelebration } from '@/components/achievement-celebration';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ToastProvider } from '@/components/toast';
@@ -87,34 +88,38 @@ function RootStack() {
   if (loading) return loadError ? <Offline /> : null;
 
   return (
-    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
-      <Stack.Protected guard={!isConfigured}>
-        <Stack.Screen name="setup" options={{ headerShown: false }} />
-      </Stack.Protected>
+    <>
+      {ready && <AchievementCelebration />}
+      <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
+        <Stack.Protected guard={!isConfigured}>
+          <Stack.Screen name="setup" options={{ headerShown: false }} />
+        </Stack.Protected>
 
-      <Stack.Protected guard={isConfigured && !signedIn}>
-        <Stack.Screen name="sign-in" options={{ headerShown: false }} />
-      </Stack.Protected>
+        <Stack.Protected guard={isConfigured && !signedIn}>
+          <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+        </Stack.Protected>
 
-      <Stack.Protected guard={signedIn && !ready}>
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      </Stack.Protected>
+        <Stack.Protected guard={signedIn && !ready}>
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        </Stack.Protected>
 
-      <Stack.Protected guard={ready}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="compose" options={{ presentation: 'modal', title: 'New letter' }} />
-        <Stack.Screen name="letter/[id]" options={{ title: '' }} />
-        <Stack.Screen name="found/[legId]" options={{ title: 'Found letter' }} />
-        <Stack.Screen name="conversation/[id]" options={{ title: '' }} />
-        <Stack.Screen name="carriers" options={{ title: 'Carriers' }} />
-        <Stack.Screen name="carrier/[id]" options={{ title: '' }} />
-        <Stack.Screen name="friends" options={{ title: 'Friends' }} />
-        <Stack.Screen name="person/[id]" options={{ title: '' }} />
-        <Stack.Screen name="archived" options={{ title: 'Archived' }} />
-        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-        <Stack.Screen name="edit-profile" options={{ title: 'Edit profile', presentation: 'modal' }} />
-      </Stack.Protected>
-    </Stack>
+        <Stack.Protected guard={ready}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="compose" options={{ presentation: 'modal', title: 'New letter' }} />
+          <Stack.Screen name="letter/[id]" options={{ title: '' }} />
+          <Stack.Screen name="found/[legId]" options={{ title: 'Found letter' }} />
+          <Stack.Screen name="conversation/[id]" options={{ title: '' }} />
+          <Stack.Screen name="carriers" options={{ title: 'Carriers' }} />
+          <Stack.Screen name="carrier/[id]" options={{ title: '' }} />
+          <Stack.Screen name="achievements" options={{ title: 'Achievements' }} />
+          <Stack.Screen name="friends" options={{ title: 'Friends' }} />
+          <Stack.Screen name="person/[id]" options={{ title: '' }} />
+          <Stack.Screen name="archived" options={{ title: 'Archived' }} />
+          <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+          <Stack.Screen name="edit-profile" options={{ title: 'Edit profile', presentation: 'modal' }} />
+        </Stack.Protected>
+      </Stack>
+    </>
   );
 }
 

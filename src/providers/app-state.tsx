@@ -10,7 +10,17 @@ import {
   type ReactNode,
 } from 'react';
 
-import { api, type Friends, type FoundLetter, type Letter, type Me, type Transport } from '@/lib/api';
+import {
+  api,
+  type Achievement,
+  type Friends,
+  type FoundLetter,
+  type Letter,
+  type Me,
+  type Transport,
+  type Weather,
+  type WeatherEffect,
+} from '@/lib/api';
 import type { Units } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
@@ -36,6 +46,12 @@ type AppState = {
   me: Me | null | undefined;
   transports: Transport[];
   transport: (id: string) => Transport | undefined;
+  /** has this carrier been unlocked (starter or via an achievement)? */
+  isUnlocked: (transportId: string) => boolean;
+  /** the achievement that unlocks a carrier */
+  unlockedBy: (transportId: string) => Pick<Achievement, 'id' | 'title' | 'emoji'> | undefined;
+  /** how a weather kind affects a carrier, if at all */
+  weatherEffect: (weather: Weather | null | undefined, transportId: string) => WeatherEffect | undefined;
   mail: Letter[];
   found: FoundLetter[];
   friends: Friends;
@@ -58,6 +74,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // Profile is stored with the user it belongs to, so switching accounts never shows a stale one.
   const [profile, setProfile] = useState<{ userId: string; me: Me | null } | null>(null);
   const [transports, setTransports] = useState<Transport[]>([]);
+  const [effects, setEffects] = useState<WeatherEffect[]>([]);
+  const [catalog, setCatalog] = useState<Pick<Achievement, 'id' | 'title' | 'emoji' | 'unlocks'>[]>([]);
   const [mail, setMail] = useState<Letter[]>([]);
   const [found, setFound] = useState<FoundLetter[]>([]);
   const [friends, setFriends] = useState<Friends>(EMPTY_FRIENDS);
@@ -116,6 +134,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
     api.transports().then(setTransports).catch(() => {});
     api.friends().then(setFriends).catch(() => {});
+    api.weatherEffects().then(setEffects).catch(() => {});
+    api.achievementCatalog().then(setCatalog).catch(() => {});
   }, [userId]);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -132,6 +152,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       me,
       transports,
       transport: (id) => transports.find((t) => t.id === id),
+      // Before the server reports unlocks (older database), treat everything as available.
+      isUnlocked: (id) => !me?.unlocked_carriers || me.unlocked_carriers.includes(id),
+      unlockedBy: (id) => catalog.find((a) => a.unlocks === id),
+      weatherEffect: (weather, id) =>
+        weather ? effects.find((e) => e.weather === weather && e.transport_id === id) : undefined,
       mail,
       found,
       friends,
@@ -146,7 +171,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         await supabase.auth.signOut();
       },
     }),
-    [session, me, transports, mail, found, friends, settings, updateSettings, refreshMe, refreshMail, refreshFriends, loadError],
+    [
+      session,
+      me,
+      transports,
+      effects,
+      catalog,
+      mail,
+      found,
+      friends,
+      settings,
+      updateSettings,
+      refreshMe,
+      refreshMail,
+      refreshFriends,
+      loadError,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

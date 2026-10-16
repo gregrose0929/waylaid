@@ -30,6 +30,7 @@ export default function MeScreen() {
     { label: 'Received', value: me.stats.received, emoji: '📥' },
     { label: 'Found', value: me.stats.found, emoji: '🔍' },
   ];
+  const unlocked = me.unlocked_carriers?.length;
 
   return (
     <ThemedView style={{ flex: 1 }}>
@@ -82,7 +83,18 @@ export default function MeScreen() {
               highlight={friends.incoming.length > 0}
               onPress={() => router.push('/friends')}
             />
-            <LinkRow icon="send" label="Meet the carriers" onPress={() => router.push('/carriers')} />
+            <LinkRow
+              icon="check"
+              label="Achievements"
+              detail={me.stats.achievements != null ? `🏆 ${me.stats.achievements}` : undefined}
+              onPress={() => router.push('/achievements')}
+            />
+            <LinkRow
+              icon="send"
+              label="Meet the carriers"
+              detail={unlocked ? `${unlocked} unlocked` : undefined}
+              onPress={() => router.push('/carriers')}
+            />
             <LinkRow icon="archive" label="Archived letters" onPress={() => router.push('/archived')} />
             <LinkRow
               icon="location"

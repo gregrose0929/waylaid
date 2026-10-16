@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Postcard } from '@/components/postcard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TransportPicker } from '@/components/transport-picker';
@@ -12,11 +13,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { api } from '@/lib/api';
 import { displayName, formatDistance, formatWhen } from '@/lib/format';
 import { getHere, type Here } from '@/lib/location';
+import { weatherAt, type WeatherNow } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
 
 export default function FoundLetterScreen() {
   const { legId } = useLocalSearchParams<{ legId: string }>();
-  const { found, transport, units, refreshMail } = useApp();
+  const { found, transport, units, refreshMail, refreshMe } = useApp();
   const theme = useTheme();
   const item = found.find((f) => f.leg_id === legId);
 
@@ -26,6 +28,7 @@ export default function FoundLetterScreen() {
   const [carrier, setCarrier] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [weather, setWeather] = useState<WeatherNow | null>(null);
 
   if (!item) return <EmptyState emoji="🤷" title="Not in your satchel" body="This letter may have moved on." />;
 
@@ -62,6 +65,7 @@ export default function FoundLetterScreen() {
     setError(null);
     try {
       const pos = await getHere();
+      weatherAt(pos.lat, pos.lng).then(setWeather);
       setHere(pos);
       setDistanceKm(await api.quoteDistance(item!.to.id, pos));
     } catch (e) {
@@ -74,7 +78,8 @@ export default function FoundLetterScreen() {
     setBusy(true);
     setError(null);
     try {
-      await api.forwardFound(legId, carrier, here.lat, here.lng);
+      await api.forwardFound(legId, carrier, here.lat, here.lng, weather?.kind);
+      refreshMe().catch(() => {});
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       await refreshMail();
       router.back();
@@ -117,12 +122,15 @@ export default function FoundLetterScreen() {
 
         <Card>
           <ThemedText type="small" themeColor="textSecondary">
-            You found this {formatWhen(item.found_at)} where a {wreckedBy?.name ?? 'carrier'} went down. Cause:{' '}
+            You found this {formatWhen(item.found_at)}
+            {item.town ? ` near ${item.town}` : ''}, where a {wreckedBy?.name ?? 'carrier'} went down
+            {item.has_photo && !item.opened_at ? '. It feels like a postcard' : ''}. Cause:{' '}
             {item.fail_reason.toLowerCase()}.
           </ThemedText>
         </Card>
 
-        {item.body && (
+        {item.photo_path && <Postcard path={item.photo_path} height={240} />}
+        {!!item.body && (
           <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
             <ThemedText style={styles.letter}>{item.body}</ThemedText>
           </View>
@@ -154,7 +162,7 @@ export default function FoundLetterScreen() {
                 ? 'FINDING YOUR LOCATION…'
                 : `${formatDistance(distanceKm, units).toUpperCase()} TO ${displayName(item.to).toUpperCase()}. CHOOSE A CARRIER`}
             </ThemedText>
-            <TransportPicker distanceKm={distanceKm} value={carrier} onChange={setCarrier} />
+            <TransportPicker distanceKm={distanceKm} value={carrier} onChange={setCarrier} weather={weather?.kind} />
             <Button
               title="Send it on"
               onPress={forward}

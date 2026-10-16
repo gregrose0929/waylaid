@@ -9,6 +9,7 @@ import { Avatar } from '@/components/avatar';
 import { CarrierSheet } from '@/components/carrier-sheet';
 import { Icon } from '@/components/icon';
 import { currentLeg, letterStatusLine } from '@/components/letter-row';
+import { Postcard } from '@/components/postcard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useToast } from '@/components/toast';
@@ -21,6 +22,7 @@ import { displayName, formatDuration } from '@/lib/format';
 import { progress } from '@/lib/geo';
 import { useLetterActions } from '@/lib/letter-actions';
 import { estimateTripMs } from '@/lib/trip';
+import { weatherAt, type WeatherNow } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
 
 type Item = { kind: 'letter'; letter: Letter } | { kind: 'day'; label: string; key: string };
@@ -145,7 +147,7 @@ function Bubble({ letter, now }: { letter: Letter; now: number }) {
     <View style={[styles.bubbleRow, mine ? styles.right : styles.left]}>
       <ActionSheet
         visible={menu}
-        title={letter.body.split('\n')[0]}
+        title={letter.body.split('\n')[0] || (letter.photo_path ? 'Postcard' : undefined)}
         onClose={() => setMenu(false)}
         options={[
           { label: 'See its journey', icon: 'send', onPress: openJourney },
@@ -170,7 +172,10 @@ function Bubble({ letter, now }: { letter: Letter; now: number }) {
           letter.status === 'overdue' && { opacity: 0.6 },
           pressed && { opacity: 0.85 },
         ]}>
-        <ThemedText style={[styles.body, mine && { color: theme.accentText }]}>{letter.body}</ThemedText>
+        {letter.photo_path && <Postcard path={letter.photo_path} height={180} />}
+        {!!letter.body && (
+          <ThemedText style={[styles.body, mine && { color: theme.accentText }]}>{letter.body}</ThemedText>
+        )}
         {letter.status === 'in_transit' && (
           <ProgressBar value={progress(leg.departed_at, leg.arrives_at, now)} color={theme.accentText} />
         )}
@@ -184,11 +189,17 @@ function Bubble({ letter, now }: { letter: Letter; now: number }) {
 }
 
 function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean }) {
-  const { transport, refreshMail } = useApp();
+  const { me, transport, refreshMail, refreshMe, weatherEffect } = useApp();
   const theme = useTheme();
   const toast = useToast();
   const [body, setBody] = useState('');
   const [carrier, setCarrier] = useState('pigeon');
+  const [weather, setWeather] = useState<WeatherNow | null>(null);
+  const home = me?.home;
+  useEffect(() => {
+    if (!home) return;
+    weatherAt(home[0], home[1]).then(setWeather);
+  }, [home]);
   const [sheet, setSheet] = useState(false);
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
@@ -215,11 +226,12 @@ function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean 
   async function send() {
     setSending(true);
     try {
-      await api.send(personId, body, carrier);
+      await api.send(personId, body, carrier, weather?.kind);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setBody('');
-      await refreshMail();
-      if (t && distanceKm != null) toast(`${t.emoji} On its way, about ${formatDuration(estimateTripMs(distanceKm, t))}`);
+      await Promise.all([refreshMail(), refreshMe()]);
+      const fx = weatherEffect(weather?.kind, carrier);
+      if (t && distanceKm != null) toast(`${t.emoji} On its way, about ${formatDuration(estimateTripMs(distanceKm, t, fx))}`);
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e));
     } finally {
@@ -236,7 +248,7 @@ function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean 
         <ThemedText style={{ fontSize: 22, lineHeight: 28 }}>{t?.emoji ?? '🕊️'}</ThemedText>
         {t && distanceKm != null && (
           <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 10, lineHeight: 12 }}>
-            {formatDuration(estimateTripMs(distanceKm, t))}
+            {formatDuration(estimateTripMs(distanceKm, t, weatherEffect(weather?.kind, carrier)))}
           </ThemedText>
         )}
       </Pressable>
@@ -258,6 +270,7 @@ function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean 
       </Pressable>
       <CarrierSheet
         visible={sheet}
+        weather={weather?.kind}
         distanceKm={distanceKm}
         value={carrier}
         onChange={setCarrier}

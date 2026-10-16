@@ -202,6 +202,9 @@ export default function SettingsScreen() {
           <Button title="Sign out" variant="ghost" onPress={doSignOut} />
           <Button title="Delete account" variant="ghost" onPress={confirmDeleteAccount} />
         </View>
+        <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
+          Town data © GeoNames (geonames.org), CC BY 4.0 · Weather by Open-Meteo.com
+        </ThemedText>
       </ScrollView>
     </ThemedView>
   );

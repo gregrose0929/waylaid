@@ -11,6 +11,29 @@ export type Transport = {
   route_factor: number;
   failure_rate: number;
   sort: number;
+  /** available from the start; the rest are unlocked by achievements */
+  starter: boolean;
+};
+
+export type Weather = 'clear' | 'cloudy' | 'fog' | 'rain' | 'snow' | 'storm' | 'wind';
+
+export type WeatherEffect = {
+  weather: Weather;
+  transport_id: string;
+  speed_mult: number;
+  risk_mult: number;
+};
+
+export type Achievement = {
+  id: string;
+  title: string;
+  description: string;
+  emoji: string;
+  goal: number;
+  progress: number;
+  /** carrier this achievement unlocks, if any */
+  unlocks: string | null;
+  unlocked_at: string | null;
 };
 
 /** How you relate to someone. Being blocked by them always reads as 'none'. */
@@ -36,7 +59,10 @@ export type Me = {
   home: LatLng | null;
   home_label: string | null;
   share_precise_home: boolean;
-  stats: { sent: number; delivered: number; received: number; found: number };
+  unlocked_carriers: string[];
+  /** achievements earned since you last looked */
+  new_achievements: { id: string; title: string; emoji: string; unlocks: string | null }[];
+  stats: { sent: number; delivered: number; received: number; found: number; achievements: number };
 };
 
 export type Friends = {
@@ -68,11 +94,13 @@ export type Leg = {
   departed_at: string;
   arrives_at: string;
   distance_km: number;
+  weather: Weather | null;
   origin: LatLng;
   destination: LatLng;
   outcome: LegOutcome;
   fail_reason: string | null;
   last_seen: LatLng | null;
+  last_seen_town: string | null;
   opened_by_finder: boolean;
 };
 
@@ -86,6 +114,8 @@ export type Letter = {
   read_at: string | null;
   delivered_at: string | null;
   body: string;
+  /** postcard photo in the private "postcards" bucket */
+  photo_path: string | null;
   other: Person;
   legs: Leg[];
 };
@@ -94,6 +124,8 @@ export type Wreck = {
   leg_id: string;
   transport_id: string;
   fail_reason: string;
+  /** the town it was pulled into, e.g. "Muncie, IN" */
+  town: string | null;
   lost_at: string;
   coords: LatLng;
   distance_m: number;
@@ -104,6 +136,7 @@ export type FoundLetter = {
   message_id: string;
   transport_id: string;
   fail_reason: string;
+  town: string | null;
   found_at: string;
   opened_at: string | null;
   forwarded: boolean;
@@ -112,6 +145,8 @@ export type FoundLetter = {
   from: Person;
   to: Person;
   body: string | null;
+  has_photo: boolean;
+  photo_path: string | null;
 };
 
 export type LetterState = 'inbox' | 'archived' | 'deleted' | 'restored' | 'unread' | 'read';
@@ -133,6 +168,18 @@ export const api = {
     return data as Transport[];
   },
   me: () => rpc<Me | null>('get_me'),
+  achievements: () => rpc<Achievement[]>('get_achievements'),
+  markAchievementsSeen: () => rpc<void>('mark_achievements_seen'),
+  achievementCatalog: async () => {
+    const { data, error } = await supabase.from('achievements').select('id, title, emoji, unlocks').order('sort');
+    if (error) throw new Error(error.message);
+    return data as Pick<Achievement, 'id' | 'title' | 'emoji' | 'unlocks'>[];
+  },
+  weatherEffects: async () => {
+    const { data, error } = await supabase.from('weather_effects').select('*');
+    if (error) throw new Error(error.message);
+    return data as WeatherEffect[];
+  },
   saveProfile: (username: string, displayName: string) =>
     rpc<void>('save_profile', { p_username: username, p_display_name: displayName }),
   setHome: (lat: number, lng: number, label: string) =>
@@ -171,8 +218,14 @@ export const api = {
       p_lat: from?.lat ?? null,
       p_lng: from?.lng ?? null,
     }),
-  send: (recipientId: string, body: string, transportId: string) =>
-    rpc<string>('send_message', { p_recipient: recipientId, p_body: body, p_transport: transportId }),
+  send: (recipientId: string, body: string, transportId: string, weather?: Weather | null, photoPath?: string | null) =>
+    rpc<string>('send_message', {
+      p_recipient: recipientId,
+      p_body: body,
+      p_transport: transportId,
+      p_weather: weather ?? null,
+      p_photo: photoPath ?? null,
+    }),
   mail: () => rpc<Letter[]>('get_mail'),
   markRead: (messageId: string) => rpc<void>('mark_read', { p_message: messageId }),
   setLettersState: (messageIds: string[], state: LetterState) =>
@@ -185,8 +238,14 @@ export const api = {
     rpc<PickUpResult>('pick_up', { p_leg: legId, p_lat: lat, p_lng: lng }),
   found: () => rpc<FoundLetter[]>('get_found'),
   openFound: (legId: string) => rpc<string>('open_found', { p_leg: legId }),
-  forwardFound: (legId: string, transportId: string, lat: number, lng: number) =>
-    rpc<string>('forward_found', { p_leg: legId, p_transport: transportId, p_lat: lat, p_lng: lng }),
+  forwardFound: (legId: string, transportId: string, lat: number, lng: number, weather?: Weather | null) =>
+    rpc<string>('forward_found', {
+      p_leg: legId,
+      p_transport: transportId,
+      p_lat: lat,
+      p_lng: lng,
+      p_weather: weather ?? null,
+    }),
 
   // push
   registerPushToken: (token: string) => rpc<void>('register_push_token', { p_token: token }),

@@ -87,6 +87,8 @@ test('profiles and mailboxes', async () => {
   await as(B, `select set_home(39.1031, -84.5120, 'Cincinnati, OH')`);
   await as(C, `select set_home(39.5, -85.2, null)`);
   await as(E, `select set_home(39.6, -85.3, null)`);
+  await db.exec(`insert into user_achievements (user_id, achievement_id)
+                 select u, a.id from achievements a, unnest(array['${A}','${B}','${C}','${E}']::uuid[]) u`);
 
   const me = await as(A, `select get_me()`);
   assert.deepEqual(me.home, [39.9568, -86.0134], 'home is stored precisely');
@@ -244,15 +246,23 @@ test('fate rolls match the failure rate and land on the route', async () => {
   for (let i = 0; i < 300; i++) await as(A, `select send_message('${B}', 'x', 'horse')`);
   const { rows } = await db.query(`
     select avg(fails::int)::float8 as rate,
-           max(ST_Distance(f.fail_point, _gc_interpolate(l.origin, l.destination,
-               extract(epoch from fails_at - departed_at) / extract(epoch from arrives_at - departed_at))))::float8 as off_route_m,
+           coalesce(max(ST_Distance(f.fail_point, _gc_interpolate(l.origin, l.destination,
+               extract(epoch from fails_at - departed_at) / extract(epoch from arrives_at - departed_at))))
+               filter (where f.fail_town is null), 0)::float8 as off_route_m,
+           count(*) filter (where f.fail_town is not null)::int as snapped,
+           coalesce(max((select min(ST_Distance(f.fail_point, t.location)) from towns t
+                         where ST_DWithin(t.location, f.fail_point, 2000)))
+                    filter (where f.fail_town is not null), 0)::float8 as max_from_town_m,
            min(extract(epoch from fails_at - departed_at) / extract(epoch from arrives_at - departed_at))::float8 as lo,
            max(extract(epoch from fails_at - departed_at) / extract(epoch from arrives_at - departed_at))::float8 as hi
     from leg_fates f join legs l on l.id = f.leg_id
     where l.transport_id = 'horse'`);
   const r = rows[0];
   assert.ok(r.rate > 0.38 && r.rate < 0.62, `~50% should fail, got ${r.rate}`);
-  assert.ok(r.off_route_m < 1, 'wreck sits on the great-circle route');
+  // Wrecks near a town are pulled into it; the rest stay exactly on the route.
+  assert.ok(r.off_route_m < 1, 'unsnapped wrecks sit on the great-circle route');
+  assert.ok(r.snapped > 0, 'some wrecks were pulled into towns');
+  assert.ok(r.max_from_town_m < 800, 'snapped wrecks land a short walk from the town centre');
   assert.ok(r.lo >= 0.05 && r.hi <= 0.95, 'never fails right at either mailbox');
   await db.exec(`delete from messages where body = 'x'`);
 });
@@ -351,7 +361,7 @@ test('deleting an account removes the person but not letters they carried', asyn
   await forceFailure(leg, 0.5, 'Snatched by a hawk');
   const [lat, lng] = await wreckAt(leg);
   await as(D, `select pick_up('${leg}', $1, $2)`, [lat, lng]);
-  await as(D, `select forward_found('${leg}', 'car', $1, $2)`, [lat, lng]);
+  await as(D, `select forward_found('${leg}', 'walk', $1, $2)`, [lat, lng]); // newcomers only have starter carriers
   await as(D, `select delete_account()`);
   assert.equal((await db.query(`select count(*)::int n from profiles where id = '${D}'`)).rows[0].n, 0);
   const leg2 = await legOf(id);
@@ -362,13 +372,91 @@ test('deleting an account removes the person but not letters they carried', asyn
   assert.equal(letter.legs[1].carrier, 'stranger');
 });
 
+test('towns are loaded and lost letters show up from anywhere', async () => {
+  const n = (await db.query(`select count(*)::int n from towns`)).rows[0].n;
+  assert.ok(n > 30000, `towns loaded (${n})`);
+  const id = await as(A, `select send_message('${B}', 'Far away', 'pigeon')`);
+  const leg = await legOf(id);
+  await shiftLeg(leg, '1 hour', '1 hour');
+  await forceFailure(leg, 0.5, 'Snatched by a hawk');
+  // from Paris, ~6,800 km away, C can still see it (friends with both)
+  const wrecks = await as(C, `select nearby_wrecks(48.85, 2.35)`);
+  assert.ok(wrecks.some((w) => w.leg_id === leg), 'no distance limit any more');
+  const [lat, lng] = await wreckAt(leg);
+  const town = (await db.query(`select (public._snap_to_town(ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography)).town`, [lat, lng])).rows[0].town;
+  assert.ok(town === null || /, /.test(town), 'snapping gives a "Town, ST" label');
+});
+
+test('weather changes speed and risk, and the SR-71 ignores it', async () => {
+  const fx = (await db.query(`select * from weather_effects where weather = 'storm' and transport_id = 'pigeon'`)).rows[0];
+  const calm = await as(A, `select send_message('${B}', 'Calm', 'pigeon', 'clear')`);
+  const stormy = await as(A, `select send_message('${B}', 'Stormy', 'pigeon', 'storm')`);
+  const secs = async (m) =>
+    (await db.query(`select extract(epoch from arrives_at - departed_at)::float8 s, weather from legs where message_id = $1`, [m])).rows[0];
+  const [c, st] = [await secs(calm), await secs(stormy)];
+  assert.equal(st.weather, 'storm');
+  assert.ok(Math.abs(st.s / c.s - 1 / fx.speed_mult) < 0.01, 'storm slows the pigeon');
+  const sr = await as(A, `select send_message('${B}', 'Zoom', 'sr71', 'storm')`);
+  const sr2 = await as(A, `select send_message('${B}', 'Zoom', 'sr71', 'clear')`);
+  assert.ok(Math.abs((await secs(sr)).s - (await secs(sr2)).s) < 1, 'SR-71 flies above the weather');
+  await rejects(as(A, `select send_message('${B}', 'x', 'pigeon', 'tornado')`), /Unknown weather/);
+});
+
+test('achievements unlock faster carriers, starting from scratch', async () => {
+  const N = '00000000-0000-0000-0000-0000000000f0';
+  await db.exec(`insert into auth.users values ('${N}')`);
+  await as(N, `select save_profile('newbie', 'Newbie')`);
+  await as(N, `select set_home(39.8, -86.1, null)`);
+  await befriend(N, A);
+
+  let me = await as(N, `select get_me()`);
+  assert.deepEqual(me.unlocked_carriers, ['snail', 'moth', 'walk', 'pigeon']);
+  await rejects(as(N, `select send_message('${A}', 'Vroom', 'car')`), /haven't unlocked/);
+  await rejects(as(N, `select send_message('${A}', 'Gallop', 'horse')`), /haven't unlocked/);
+
+  await as(N, `select send_message('${A}', 'First!', 'pigeon')`);
+  me = await as(N, `select get_me()`);
+  assert.ok(me.unlocked_carriers.includes('horse'), 'first letter unlocks the Pony Express');
+  assert.deepEqual(me.new_achievements.map((a) => a.id), ['first_letter']);
+  await as(N, `select send_message('${A}', 'Gallop', 'horse')`);
+
+  const all = await as(N, `select get_achievements()`);
+  assert.equal(all.find((a) => a.id === 'first_letter').unlocked_at !== null, true);
+  assert.equal(all.find((a) => a.id === 'prolific').progress, 2);
+  assert.equal(all.find((a) => a.id === 'sr71').title, 'Wow, It’s Almost Like Instant Messaging');
+  await as(N, `select mark_achievements_seen()`);
+  assert.equal((await as(N, `select get_me()`)).new_achievements.length, 0);
+});
+
+test('postcards: only the right people can see the photo', async () => {
+  await rejects(as(A, `select send_message('${B}', '', 'car', null, '${B}/stolen.jpg')`), /isn't yours/);
+  const id = await as(A, `select send_message('${B}', '', 'pigeon', null, '${A}/beach.jpg')`);
+  const path = `${A}/beach.jpg`;
+  const leg = await legOf(id);
+  await shiftLeg(leg, '1 hour', '1 hour');
+  await forceFailure(leg, 0.5, 'Joined a different flock');
+
+  assert.equal(await as(A, `select can_view_postcard('${path}')`), true, 'the sender');
+  assert.equal(await as(B, `select can_view_postcard('${path}')`), false, 'not before it arrives');
+  assert.equal(await as(E, `select can_view_postcard('${path}')`), false, 'not a stranger');
+
+  const [lat, lng] = await wreckAt(leg);
+  await as(C, `select pick_up('${leg}', $1, $2)`, [lat, lng]);
+  assert.equal(await as(C, `select can_view_postcard('${path}')`), false, 'finder: sealed');
+  const found = (await as(C, `select get_found()`)).find((f) => f.leg_id === leg);
+  assert.equal(found.has_photo, true);
+  assert.equal(found.photo_path, null);
+  await as(C, `select open_found('${leg}')`);
+  assert.equal(await as(C, `select can_view_postcard('${path}')`), true, 'finder: after breaking the seal');
+});
+
 test('clients cannot touch tables or private helpers', async () => {
   // Supabase grants table access to these roles by default; RLS must still hide everything.
   await db.exec(`grant usage on schema public to anon, authenticated;
                  grant select, insert, update, delete on all tables in schema public to anon, authenticated;`);
   await db.query(`select set_config('test.uid', '${A}', false)`);
   const tables = ['profiles', 'messages', 'legs', 'leg_fates', 'contacts', 'mailbox_flags',
-                  'friendships', 'blocks', 'conversation_prefs', 'push_tokens'];
+                  'friendships', 'blocks', 'conversation_prefs', 'push_tokens', 'user_achievements', 'towns'];
   for (const role of ['anon', 'authenticated']) {
     await db.exec(`set role ${role}`);
     try {
@@ -377,12 +465,16 @@ test('clients cannot touch tables or private helpers', async () => {
         assert.equal(rows[0].n, 0, `${role} must not read ${table}`);
       }
       assert.ok((await db.query(`select count(*)::int n from transports`)).rows[0].n > 0, 'carriers are public');
+      assert.ok((await db.query(`select count(*)::int n from achievements`)).rows[0].n > 0, 'achievements are public');
+      assert.ok((await db.query(`select count(*)::int n from weather_effects`)).rows[0].n > 0, 'weather is public');
       for (const fn of [
         `_message_status(gen_random_uuid())`,
         `_create_leg(null, null, 'car', null, null)`,
         `_person(gen_random_uuid(), gen_random_uuid())`,
         `_are_friends(gen_random_uuid(), gen_random_uuid())`,
         `_due_arrival_pushes()`,
+        `_achievement_progress(gen_random_uuid())`,
+        `_snap_to_town(null)`,
       ]) {
         await rejects(db.query(`select ${fn}`), /permission denied/);
       }
