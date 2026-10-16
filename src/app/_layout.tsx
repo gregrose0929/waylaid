@@ -118,6 +118,7 @@ function RootStack() {
       <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
         {/* Reached from the password-reset email link, signed in or not. */}
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+        <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
 
         <Stack.Protected guard={!isConfigured}>
           <Stack.Screen name="setup" options={{ headerShown: false }} />

@@ -8,18 +8,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button, ErrorText, Field } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
+import { linkTokens as recoveryTokens } from '@/lib/auth-links';
 import { supabase } from '@/lib/supabase';
-
-/** Tokens Supabase puts after the # in a password-reset link. */
-function recoveryTokens(url: string | null) {
-  if (!url) return null;
-  const fragment = url.includes('#') ? url.slice(url.indexOf('#') + 1) : (url.split('?')[1] ?? '');
-  const params = new URLSearchParams(fragment);
-  const access_token = params.get('access_token');
-  const refresh_token = params.get('refresh_token');
-  if (!access_token || !refresh_token) return null;
-  return { access_token, refresh_token, error: params.get('error_description') };
-}
 
 /**
  * Where the "Reset your password" email link lands (waylaid://reset-password#access_token=…).

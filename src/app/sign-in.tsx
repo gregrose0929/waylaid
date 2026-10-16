@@ -1,4 +1,3 @@
-import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,10 +6,11 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button, ErrorText, Field } from '@/components/ui';
 import { Fonts, Spacing } from '@/constants/theme';
+import { authRedirect } from '@/lib/auth-links';
 import { supabase } from '@/lib/supabase';
 
 export default function SignInScreen() {
-  const [mode, setMode] = useState<'sign-in' | 'sign-up' | 'reset'>('sign-in');
+  const [mode, setMode] = useState<'sign-in' | 'sign-up' | 'reset' | 'confirm'>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,14 +25,63 @@ export default function SignInScreen() {
     const { data, error: err } =
       mode === 'sign-in'
         ? await supabase.auth.signInWithPassword(creds)
-        : await supabase.auth.signUp(creds);
+        : await supabase.auth.signUp({ ...creds, options: { emailRedirectTo: authRedirect('auth-callback') } });
     setBusy(false);
     if (err) {
-      setError(err.message);
+      // Signing in before confirming: offer to resend the email.
+      if (/not confirmed/i.test(err.message)) setMode('confirm');
+      else setError(err.message);
     } else if (mode === 'sign-up' && !data.session) {
-      setNotice('Check your email to confirm your account, then sign in.');
-      setMode('sign-in');
+      setMode('confirm');
     }
+  }
+
+  async function resend() {
+    setBusy(true);
+    setError(null);
+    const { error: err } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim(),
+      options: { emailRedirectTo: authRedirect('auth-callback') },
+    });
+    setBusy(false);
+    if (err) setError(err.message);
+    else setNotice('Sent! Check your inbox (and spam folder).');
+  }
+
+  if (mode === 'confirm') {
+    return (
+      <ThemedView style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={styles.container}>
+            <View style={styles.hero}>
+              <ThemedText style={styles.logo}>📧</ThemedText>
+              <ThemedText type="subtitle" style={{ textAlign: 'center' }}>
+                Confirm your email
+              </ThemedText>
+              <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
+                We sent a link to {email.trim()}. Open it on this phone and tap the link; Waylaid will open and you’re
+                in. (This one came by email. Your letters will be slower, we promise.)
+              </ThemedText>
+            </View>
+            <View style={{ gap: Spacing.three }}>
+              <ErrorText>{error}</ErrorText>
+              {notice && (
+                <ThemedText type="small" themeColor="success" style={{ textAlign: 'center' }}>
+                  {notice}
+                </ThemedText>
+              )}
+              <Button title="Resend the email" variant="secondary" onPress={resend} loading={busy} />
+              <Pressable onPress={() => setMode('sign-in')}>
+                <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
+                  Back to sign in
+                </ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </SafeAreaView>
+      </ThemedView>
+    );
   }
 
   if (mode === 'reset') {
@@ -115,7 +164,7 @@ function ResetPassword({ initialEmail, onDone }: { initialEmail: string; onDone:
     setBusy(true);
     setError(null);
     const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: Linking.createURL('reset-password'),
+      redirectTo: authRedirect('reset-password'),
     });
     setBusy(false);
     if (err) setError(err.message);
