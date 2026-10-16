@@ -426,6 +426,12 @@ test('achievements unlock faster carriers, starting from scratch', async () => {
   assert.equal(all.find((a) => a.id === 'sr71').title, 'Wow, It’s Almost Like Instant Messaging');
   await as(N, `select mark_achievements_seen()`);
   assert.equal((await as(N, `select get_me()`)).new_achievements.length, 0);
+
+  // Unlocks never depend on luck: finding letters is a badge, the balloon comes from sending 5.
+  assert.equal(all.find((a) => a.id === 'finders_keepers').unlocks, null);
+  assert.equal(all.find((a) => a.id === 'warming_up').unlocks, 'balloon');
+  for (let i = 0; i < 3; i++) await as(N, `select send_message('${A}', 'More!', 'pigeon')`);
+  assert.ok((await as(N, `select get_me()`)).unlocked_carriers.includes('balloon'), '5 letters unlock the balloon');
 });
 
 test('postcards: only the right people can see the photo', async () => {

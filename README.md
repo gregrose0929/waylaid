@@ -30,7 +30,7 @@ spot can pick it up. Then they decide whether to **peek inside**, **send it on**
 - **Lost letters land in towns**: a fallen carrier's letter is pulled into the nearest town (within 25 km) so
   people can actually reach it, and your map shows every lost letter between your friends, wherever it fell
 - **Achievements** with silly names; everyone starts with the snail, moth, foot courier and pigeon, and unlocks
-  faster carriers by playing (the SR-71 comes last: *"Wow, it's almost like instant messaging"*)
+  faster carriers by sending letters and making friends, never by luck (the SR-71 comes last: *"Wow, it's almost like instant messaging"*)
 - **Weather**: live weather where a letter sets off changes each carrier's speed and risk (snails love rain)
 - **Photo postcards**: attach a photo; finders only see it if they break the seal
 - **Carrier profiles**: every carrier has a (fictional) personnel file: nickname, likes, fears, origin story
