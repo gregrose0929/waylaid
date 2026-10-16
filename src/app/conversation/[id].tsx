@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ActionSheet } from '@/components/action-sheet';
 import { Avatar } from '@/components/avatar';
+import { LetterText, WaxSeal } from '@/components/letter-paper';
 import { CarrierSheet } from '@/components/carrier-sheet';
 import { Icon } from '@/components/icon';
 import { currentLeg, letterStatusLine } from '@/components/letter-row';
@@ -22,6 +23,7 @@ import { displayName, formatDuration } from '@/lib/format';
 import { progress } from '@/lib/geo';
 import { useDraft } from '@/lib/drafts';
 import { useLetterActions } from '@/lib/letter-actions';
+import { playCarrier } from '@/lib/sounds';
 import { estimateTripMs } from '@/lib/trip';
 import { weatherAt, type WeatherNow } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
@@ -160,7 +162,11 @@ function Bubble({ letter, now }: { letter: Letter; now: number }) {
         ]}
       />
       <Pressable
-        onPress={openJourney}
+        onPress={() =>
+          letter.madlib?.can_fill
+            ? router.push({ pathname: '/madlib', params: { reply: letter.id } })
+            : openJourney()
+        }
         onLongPress={() => {
           Haptics.selectionAsync().catch(() => {});
           setMenu(true);
@@ -175,22 +181,34 @@ function Bubble({ letter, now }: { letter: Letter; now: number }) {
         ]}>
         {letter.photo_path && <Postcard path={letter.photo_path} width={240} maxHeight={320} />}
         {!!letter.body && (
-          <ThemedText style={[styles.body, mine && { color: theme.accentText }]}>{letter.body}</ThemedText>
+          <LetterText
+            text={letter.body}
+            style={[styles.body, { color: mine ? theme.accentText : theme.text }]}
+            highlight={mine ? theme.accentText : theme.accent}
+          />
         )}
         {letter.status === 'in_transit' && (
           <ProgressBar value={progress(leg.departed_at, leg.arrives_at, now)} color={theme.accentText} />
         )}
+        {(letter.chain_id || letter.madlib) && (
+          <ThemedText type="small" style={{ color: mine ? theme.accentText : theme.accent }}>
+            {letter.madlib ? (letter.madlib.can_fill ? '🎭 Your turn: tap to fill in your blanks' : '🎭 Mad Lib') : '🔗 Chain letter'}
+          </ThemedText>
+        )}
+        <View style={styles.metaRow}>
+          <WaxSeal seal={letter.seal} size={16} />
         <ThemedText type="small" style={[styles.meta, { color: mine ? theme.accentText : theme.textSecondary }]}>
           {t?.emoji} {time}
           {status ? ` · ${status}` : ''}
         </ThemedText>
+        </View>
       </Pressable>
     </View>
   );
 }
 
 function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean }) {
-  const { me, transport, refreshMail, refreshMe, weatherEffect } = useApp();
+  const { me, transport, refreshMail, refreshMe, weatherEffect, settings, isCosmeticUnlocked } = useApp();
   const theme = useTheme();
   const toast = useToast();
   // Unsent replies are kept per conversation.
@@ -230,8 +248,13 @@ function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean 
   async function send() {
     setSending(true);
     try {
-      await api.send(personId, body, carrier, weather?.kind);
+      await api.send(personId, body, carrier, {
+        weather: weather?.kind,
+        paper: isCosmeticUnlocked(settings.paper) ? settings.paper : null,
+        seal: isCosmeticUnlocked(settings.seal) ? settings.seal : null,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      playCarrier(carrier);
       draft.update({ ...draft.value, body: '' });
       draft.clear();
       await Promise.all([refreshMail(), refreshMe()]);
@@ -319,6 +342,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.serif,
     fontSize: 17,
     lineHeight: 24,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
   },
   meta: {
     fontSize: 12,

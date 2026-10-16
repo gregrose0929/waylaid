@@ -12,7 +12,7 @@ import { formatWhen } from '@/lib/format';
 import { useApp } from '@/providers/app-state';
 
 export default function AchievementsScreen() {
-  const { transport } = useApp();
+  const { transport, cosmetics } = useApp();
   const theme = useTheme();
   const [list, setList] = useState<Achievement[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +55,14 @@ export default function AchievementsScreen() {
                 <ThemedText type="small" themeColor="textSecondary">
                   {item.description}
                 </ThemedText>
+                {cosmetics
+                  .filter((c) => c.unlocked_by === item.id)
+                  .map((c) => (
+                    <ThemedText key={c.id} type="small" style={{ color: theme.accent }}>
+                      {done ? 'Unlocked' : 'Unlocks'} {c.kind === 'paper' ? '📄' : '🔴'} {c.name}{' '}
+                      {c.kind === 'paper' ? 'paper' : 'wax seal'}
+                    </ThemedText>
+                  ))}
                 {unlocks && (
                   <ThemedText type="small" style={{ color: theme.accent }}>
                     {done ? 'Unlocked' : 'Unlocks'} {unlocks.emoji} {unlocks.name}

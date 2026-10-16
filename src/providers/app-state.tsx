@@ -13,9 +13,11 @@ import {
 import {
   api,
   type Achievement,
+  type Cosmetic,
   type Friends,
   type FoundLetter,
   type Letter,
+  type MadlibTemplate,
   type Me,
   type Transport,
   type Weather,
@@ -33,9 +35,22 @@ export type Settings = {
   arrivalAlerts: boolean;
   /** notify when you walk near a lost letter (needs background location) */
   foundAlerts: boolean;
+  /** carrier sounds, arrival chime, achievement fanfare */
+  sounds: boolean;
+  /** last stationery used, so quick replies match */
+  paper: string;
+  seal: string;
 };
 
-const DEFAULT_SETTINGS: Settings = { units: 'mi', mailView: 'mail', arrivalAlerts: true, foundAlerts: false };
+const DEFAULT_SETTINGS: Settings = {
+  units: 'mi',
+  mailView: 'mail',
+  arrivalAlerts: true,
+  foundAlerts: false,
+  sounds: true,
+  paper: 'classic',
+  seal: 'red',
+};
 const SETTINGS_KEY = 'waylaid.settings';
 const EMPTY_FRIENDS: Friends = { friends: [], incoming: [], outgoing: [], blocked: [] };
 
@@ -52,6 +67,12 @@ type AppState = {
   unlockedBy: (transportId: string) => Pick<Achievement, 'id' | 'title' | 'emoji'> | undefined;
   /** how a weather kind affects a carrier, if at all */
   weatherEffect: (weather: Weather | null | undefined, transportId: string) => WeatherEffect | undefined;
+  /** stationery and wax seals */
+  cosmetics: Cosmetic[];
+  isCosmeticUnlocked: (id: string) => boolean;
+  /** the achievement that unlocks a paper or seal */
+  cosmeticUnlockedBy: (id: string) => Pick<Achievement, 'id' | 'title' | 'emoji'> | undefined;
+  madlibTemplates: MadlibTemplate[];
   mail: Letter[];
   found: FoundLetter[];
   friends: Friends;
@@ -76,6 +97,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [transports, setTransports] = useState<Transport[]>([]);
   const [effects, setEffects] = useState<WeatherEffect[]>([]);
   const [catalog, setCatalog] = useState<Pick<Achievement, 'id' | 'title' | 'emoji' | 'unlocks'>[]>([]);
+  const [cosmetics, setCosmetics] = useState<Cosmetic[]>([]);
+  const [madlibTemplates, setMadlibTemplates] = useState<MadlibTemplate[]>([]);
   const [mail, setMail] = useState<Letter[]>([]);
   const [found, setFound] = useState<FoundLetter[]>([]);
   const [friends, setFriends] = useState<Friends>(EMPTY_FRIENDS);
@@ -136,6 +159,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     api.friends().then(setFriends).catch(() => {});
     api.weatherEffects().then(setEffects).catch(() => {});
     api.achievementCatalog().then(setCatalog).catch(() => {});
+    api.cosmetics().then(setCosmetics).catch(() => {});
+    api.madlibTemplates().then(setMadlibTemplates).catch(() => {});
   }, [userId]);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -157,6 +182,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       unlockedBy: (id) => catalog.find((a) => a.unlocks === id),
       weatherEffect: (weather, id) =>
         weather ? effects.find((e) => e.weather === weather && e.transport_id === id) : undefined,
+      cosmetics,
+      isCosmeticUnlocked: (id) =>
+        me?.unlocked_cosmetics ? me.unlocked_cosmetics.includes(id) : !cosmetics.find((c) => c.id === id)?.unlocked_by,
+      cosmeticUnlockedBy: (id) => {
+        const by = cosmetics.find((c) => c.id === id)?.unlocked_by;
+        return by ? catalog.find((a) => a.id === by) : undefined;
+      },
+      madlibTemplates,
       mail,
       found,
       friends,
@@ -177,6 +210,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       transports,
       effects,
       catalog,
+      cosmetics,
+      madlibTemplates,
       mail,
       found,
       friends,

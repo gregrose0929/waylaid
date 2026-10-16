@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
+import { LetterPaper } from '@/components/letter-paper';
 import { currentLeg } from '@/components/letter-row';
 import { Postcard } from '@/components/postcard';
 import { SlowMap, type MapPin, type MapRoute } from '@/components/slow-map';
@@ -17,6 +18,7 @@ import { activityAt, api, isUnread, type Leg, type Letter } from '@/lib/api';
 import { displayName, formatDistance, formatDuration, formatWhen } from '@/lib/format';
 import { greatCircle, interpolate, progress } from '@/lib/geo';
 import { useLetterActions } from '@/lib/letter-actions';
+import { playSound } from '@/lib/sounds';
 import { weatherLook } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
 
@@ -28,7 +30,9 @@ export default function LetterScreen() {
 
   const shouldMarkRead = !!letter && isUnread(letter);
   useEffect(() => {
-    if (shouldMarkRead) api.markRead(id).then(refreshMail).catch(() => {});
+    if (!shouldMarkRead) return;
+    playSound('arrive');
+    api.markRead(id).then(refreshMail).catch(() => {});
   }, [shouldMarkRead, id, refreshMail]);
 
   if (!letter) return <EmptyState emoji="🤷" title="Letter not found" body="It may still be loading." />;
@@ -37,7 +41,7 @@ export default function LetterScreen() {
 }
 
 function LetterView({ letter, now }: { letter: Letter; now: number }) {
-  const { transport, units } = useApp();
+  const { transport, units, refreshMail } = useApp();
   const actions = useLetterActions();
   const theme = useTheme();
   const leg = currentLeg(letter);
@@ -142,13 +146,63 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
           </Card>
         )}
 
+        {letter.madlib?.can_fill && (
+          <Card style={{ gap: Spacing.two }}>
+            <ThemedText style={{ fontWeight: 700 }}>🎭 Your turn!</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {who} filled in half the blanks of a Mad Lib. Fill in yours (no peeking at the story) and the finished
+              story flies back to them.
+            </ThemedText>
+            <Button
+              title="Fill in my blanks"
+              onPress={() => router.push({ pathname: '/madlib', params: { reply: letter.id } })}
+            />
+          </Card>
+        )}
+
+        {letter.chain_id && (
+          <Card style={{ gap: Spacing.two }}>
+            <ThemedText style={{ fontWeight: 700 }}>🔗 Chain letter · link {letter.chain_link}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {letter.chain_can_pass
+                ? 'It’s your turn to hold the chain. Add a line and pass it to a friend who isn’t in it yet, or end it here.'
+                : 'Each person adds a line and passes it on.'}
+            </ThemedText>
+            <Button
+              title="Read the chain"
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/chain/[id]', params: { id: letter.chain_id! } })}
+            />
+            {letter.chain_can_pass && (
+              <>
+                <Button
+                  title="Add a line & pass it on"
+                  onPress={() =>
+                    router.push({ pathname: '/compose', params: { chainFrom: letter.id, chain: letter.chain_id! } })
+                  }
+                />
+                <Button
+                  title="End the chain"
+                  variant="ghost"
+                  onPress={() =>
+                    api
+                      .endChain(letter.id)
+                      .then(refreshMail)
+                      .catch(() => {})
+                  }
+                />
+              </>
+            )}
+          </Card>
+        )}
+
         {letter.photo_path && <Postcard path={letter.photo_path} />}
-        <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
-          {!!letter.body && <ThemedText style={styles.letter}>{letter.body}</ThemedText>}
-          <ThemedText style={[styles.letter, styles.signature]} themeColor="textSecondary">
-            — {letter.role === 'sent' ? 'you' : who}
-          </ThemedText>
-        </View>
+        <LetterPaper
+          body={letter.body}
+          paper={letter.paper}
+          seal={letter.seal}
+          signature={letter.role === 'sent' ? 'you' : who}
+        />
 
         <ThemedText type="smallBold" themeColor="textSecondary">
           JOURNEY

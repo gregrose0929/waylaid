@@ -1,35 +1,61 @@
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
+import { WaxSeal } from '@/components/letter-paper';
 import { Postcard } from '@/components/postcard';
+import { StationeryPicker } from '@/components/stationery-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TransportPicker } from '@/components/transport-picker';
 import { Button, Card, ErrorText, Field } from '@/components/ui';
+import { paperStyle } from '@/constants/stationery';
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
-import { api, type Person } from '@/lib/api';
+import { api, type Chain, type Person } from '@/lib/api';
 import { useDraft } from '@/lib/drafts';
 import { displayName, formatDistance, formatDuration, formatTemp } from '@/lib/format';
 import { pickPhoto, uploadPostcard } from '@/lib/postcards';
+import { playCarrier } from '@/lib/sounds';
 import { estimateTripMs } from '@/lib/trip';
 import { weatherAt, type WeatherNow } from '@/lib/weather';
 import { useApp } from '@/providers/app-state';
 
 export default function ComposeScreen() {
-  const params = useLocalSearchParams<{ to?: string }>();
-  const { me, transport, units, refreshMail, refreshMe, friends, weatherEffect } = useApp();
+  // `chainFrom` + `chain`: you're adding your line to a chain letter you received.
+  const params = useLocalSearchParams<{ to?: string; chainFrom?: string; chain?: string }>();
+  const { me, transport, units, refreshMail, refreshMe, friends, weatherEffect, settings, updateSettings, isCosmeticUnlocked } =
+    useApp();
   const theme = useTheme();
+  const dark = useColorScheme() === 'dark';
+  const passing = !!params.chainFrom;
+  const [chain, setChain] = useState<Chain | null>(null);
+  const [startChain, setStartChain] = useState(false);
+  const [showStationery, setShowStationery] = useState(false);
+  // Last-used stationery, as long as it's still unlocked.
+  const paper = isCosmeticUnlocked(settings.paper) ? settings.paper : 'classic';
+  const seal = isCosmeticUnlocked(settings.seal) ? settings.seal : 'red';
+  const ps = paperStyle(paper);
+  const ink = (dark ? ps.inkDark : ps.inkLight) ?? theme.text;
+
+  const chainId = params.chain;
+  useEffect(() => {
+    if (!chainId) return;
+    api
+      .getChain(chainId)
+      .then(setChain)
+      .catch(() => {});
+  }, [chainId]);
 
   const [query, setQuery] = useState('');
   // The letter in progress is a draft: leave the screen (or close the app) and it's still here.
   // Writing to someone specific keeps its own draft, separate from a blank new letter.
-  const draft = useDraft(`compose.${params.to ?? 'new'}`, {
+  const draft = useDraft(`compose.${params.chainFrom ? `chain.${params.chainFrom}` : (params.to ?? 'new')}`, {
     toId: (params.to ?? null) as string | null,
     body: '',
     carrier: 'pigeon' as string | null,
@@ -77,9 +103,17 @@ export default function ComposeScreen() {
     setError(null);
     try {
       const photoPath = photo && me ? await uploadPostcard(photo, me.id) : null;
-      await api.send(to.id, body, carrier, weather?.kind, photoPath);
+      await api.send(to.id, body, carrier, {
+        weather: weather?.kind,
+        photoPath,
+        paper,
+        seal,
+        startChain: !passing && startChain,
+        chainFrom: params.chainFrom ?? null,
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       draft.clear();
+      playCarrier(carrier);
       const t = transport(carrier);
       const fx = weatherEffect(weather?.kind, carrier);
       setSent({ emoji: t?.emoji ?? '✉️', eta: t && distanceKm != null ? estimateTripMs(distanceKm, t, fx) : 0 });
@@ -101,6 +135,7 @@ export default function ComposeScreen() {
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
           If all goes well, {to ? displayName(to) : 'they'} will have it in about {formatDuration(sent.eta)}.
+          {passing ? ' Your line is part of the chain now.' : ''}
         </ThemedText>
         <Button title="Done" onPress={() => router.back()} style={{ alignSelf: 'stretch' }} />
       </ThemedView>
@@ -114,6 +149,37 @@ export default function ComposeScreen() {
     <ThemedView style={styles.flex}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {passing ? (
+            <Card style={{ gap: Spacing.two }}>
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                🔗 THE CHAIN SO FAR
+              </ThemedText>
+              {chain?.links.map((l) => (
+                <ThemedText key={l.link} style={styles.chainLine}>
+                  <ThemedText themeColor="textSecondary">{displayName(l.from)}: </ThemedText>
+                  {l.body}
+                </ThemedText>
+              )) ?? <ThemedText themeColor="textSecondary">Loading…</ThemedText>}
+              <ThemedText type="small" themeColor="textSecondary">
+                Add your line, then pass it to a friend who isn’t in the chain yet
+                {chain ? ` (link ${chain.links.length + 1} of ${chain.max_links})` : ''}.
+              </ThemedText>
+            </Card>
+          ) : (
+            <Card
+              onPress={() => router.replace({ pathname: '/madlib', params: params.to ? { to: params.to } : {} })}
+              style={styles.toCard}>
+              <ThemedText style={{ fontSize: 28, lineHeight: 34 }}>🎭</ThemedText>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={{ fontWeight: 700 }}>Make it a Mad Lib</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  You fill half the blanks, they fill the rest, and the story comes back to you.
+                </ThemedText>
+              </View>
+              <Icon name="chevron" size={18} color={theme.textSecondary} />
+            </Card>
+          )}
+
           {/* To */}
           {to ? (
             <Card style={styles.toCard}>
@@ -202,15 +268,15 @@ export default function ComposeScreen() {
               </Pressable>
             </View>
           )}
-          <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+          <View style={[styles.paper, { backgroundColor: dark ? ps.dark : ps.light, borderColor: ps.border }]}>
             <TextInput
               multiline
-              placeholder={photo ? 'Wish you were here…' : 'Dear friend…'}
+              placeholder={passing ? 'Your line…' : photo ? 'Wish you were here…' : 'Dear friend…'}
               placeholderTextColor={theme.textSecondary}
               value={body}
               onChangeText={setBody}
-              maxLength={2000}
-              style={[styles.letter, { color: theme.text }]}
+              maxLength={passing ? 280 : 2000}
+              style={[styles.letter, { color: ink }]}
             />
             <View style={styles.paperFooter}>
               {!photo && Platform.OS !== 'web' && (
@@ -228,10 +294,34 @@ export default function ComposeScreen() {
                 </Pressable>
               )}
               <ThemedText type="small" themeColor="textSecondary" style={{ marginLeft: 'auto' }}>
-                {body.length}/2000
+                {body.length}/{passing ? 280 : 2000}
               </ThemedText>
+              <WaxSeal seal={seal} size={30} />
             </View>
           </View>
+
+          {/* Stationery */}
+          <Card onPress={() => setShowStationery((v) => !v)} style={styles.toCard}>
+            <ThemedText style={{ fontSize: 22, lineHeight: 28 }}>✨</ThemedText>
+            <ThemedText style={{ flex: 1 }}>Stationery & seal</ThemedText>
+            <Icon name="chevron" size={18} color={theme.textSecondary} />
+          </Card>
+          {showStationery && (
+            <StationeryPicker paper={paper} seal={seal} onChange={(next) => updateSettings(next)} />
+          )}
+
+          {!passing && (
+            <Card style={styles.toCard}>
+              <ThemedText style={{ fontSize: 22, lineHeight: 28 }}>🔗</ThemedText>
+              <View style={{ flex: 1 }}>
+                <ThemedText>Start a chain letter</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  They add a line and pass it to one of their friends, and so on. Everyone reads the lines before theirs.
+                </ThemedText>
+              </View>
+              <Switch value={startChain} onValueChange={setStartChain} trackColor={{ true: theme.accent }} />
+            </Card>
+          )}
 
           {/* Weather + carrier */}
           {weather && (
@@ -304,6 +394,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
+  },
+  chainLine: {
+    fontFamily: Fonts.serif,
+    fontSize: 16,
+    lineHeight: 24,
   },
   paper: {
     borderRadius: Radius.medium,

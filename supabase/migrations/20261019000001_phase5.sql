@@ -1,4 +1,4 @@
--- Phase 5: crash reports, stationery & wax seals, chain letters.
+-- Phase 5: crash reports, stationery & wax seals, chain letters, two-player Mad Libs.
 
 -- ---------------------------------------------------------------------------
 -- Crash reports: the app records JavaScript errors here (readable in the
@@ -258,6 +258,162 @@ as $$
   from public.cosmetics where public._cosmetic_unlocked(u, id);
 $$;
 
+
+-- ---------------------------------------------------------------------------
+-- Two-player Mad Libs: you fill the odd-numbered blanks, your friend fills the
+-- even ones when it arrives, and the finished story travels back to you.
+-- Nobody sees the story until their part is done.
+-- ---------------------------------------------------------------------------
+
+create table public.madlib_templates (
+  id       text primary key,
+  title    text not null,
+  emoji    text not null,
+  prompts  text[] not null,
+  story    text not null,
+  sort     int not null
+);
+alter table public.madlib_templates enable row level security;
+-- Prompts are public; the story text itself is only revealed by the server.
+create policy "madlib prompts are public" on public.madlib_templates for select using (true);
+revoke select on public.madlib_templates from anon, authenticated;
+grant select (id, title, emoji, prompts, sort) on public.madlib_templates to anon, authenticated;
+
+insert into public.madlib_templates (id, title, emoji, prompts, story, sort) values
+  ('vacation', 'Postcard from Vacation', '🏖️', array['adjective', 'place', 'noun (plural)', 'verb ending in -ing', 'animal', 'body part', 'food', 'exclamation', 'number', 'adjective'], 'Greetings from {2}! The weather here is {1} and the locals keep handing me {3}. Yesterday I went {4} with a {5} and nearly lost my {6}. The {7} is incredible. {8}! I''ve decided to stay {9} more weeks. Wish you were here, it''s {10}.', 1),
+  ('postmaster', 'Complaint to the Postmaster', '📮', array['carrier animal', 'adjective', 'noun', 'verb (past tense)', 'number', 'body part', 'liquid', 'famous person', 'adjective', 'noun'], 'Dear Postmaster, I am writing to complain about your {1}. It arrived looking {2} and carrying a {3} instead of my letter. When I asked about it, it simply {4} at me for {5} minutes and then sat on my {6}. My letter was soaked in {7}. Even {8} would have done a better job. I expect a {9} apology and a free {10}. Yours, furiously.', 2),
+  ('love', 'A Very Serious Love Letter', '💌', array['adjective', 'noun', 'body part (plural)', 'vegetable', 'verb', 'number', 'animal', 'adjective', 'place', 'noun'], 'My dearest, your {3} are as {1} as a {2} at sunrise. Every time I eat a {4}, I think of you. I would {5} across {6} oceans for you, riding nothing but a {7}. Our love is {8}, like a Tuesday in {9}. Please accept this {10} as a token of my devotion.', 3),
+  ('job', 'Job Application', '💼', array['job title', 'adjective', 'skill ending in -ing', 'number', 'noun (plural)', 'animal', 'verb', 'adjective', 'famous person', 'noun'], 'To whom it may concern, I am applying for the position of {1}. I am extremely {2} and have {4} years of experience {3}. At my last job I managed a team of {5} and one very difficult {6}. I can {7} faster than anyone. My references describe me as {8}. {9} once called me a genius. I am available to start immediately, salary: one {10}.', 4),
+  ('pirate', 'Message in a Bottle', '🏴‍☠️', array['adjective', 'noun', 'number', 'animal (plural)', 'verb ending in -ing', 'food', 'exclamation', 'body part', 'adjective', 'place'], 'To whoever finds this: I have been stranded on this {1} island for {3} days with nothing but a {2}. The only company I have is a gang of {4} who spend all day {5}. I have survived by eating {6}. {7}! A ship just passed and I waved my {8} but they were too {9} to notice. Please send help to {10}. Also snacks.', 5),
+  ('thankyou', 'Overly Grateful Thank-You Note', '🎁', array['noun', 'adjective', 'verb', 'number', 'room in a house', 'animal', 'adjective', 'verb ending in -ing', 'noun', 'emotion'], 'Thank you SO much for the {1}! It is the most {2} gift I have ever received. I have already used it to {3} {4} times. It now has its own shelf in the {5}, although my {6} keeps trying to eat it. It is {7}. I find myself {8} with it at night. I will treasure it forever, like a {9}. With deep and lasting {10},', 6),
+  ('weather', 'Weather Report from the Road', '⛈️', array['weather', 'adjective', 'carrier', 'noun', 'verb (past tense)', 'number', 'sound', 'body part', 'adjective', 'food'], 'Update from the road: it has been {1} for three days straight. Visibility is {2}. My {3} refused to go any further and is now hiding under a {4}. This morning a cloud {5} directly onto me {6} times. The thunder sounds like {7}. I can no longer feel my {8}. Morale is {9}. Please send {10}.', 7),
+  ('alien', 'First Contact', '👽', array['planet name', 'adjective', 'number', 'body part (plural)', 'noun', 'verb', 'Earth food', 'adjective', 'dance move', 'noun'], 'Greetings, Earthling. We come from the planet {1}, which is very {2}. We have {3} {4} and we communicate exclusively by {5}. We have come to {6} your planet and also to try {7}, which we hear is {8}. In exchange, we will teach you the {9}. Please take us to your leader, or failing that, a {10}.', 8);
+
+create table public.madlibs (
+  id             uuid primary key default gen_random_uuid(),
+  template_id    text not null references public.madlib_templates (id),
+  starter_id     uuid references public.profiles (id) on delete set null,
+  partner_id     uuid references public.profiles (id) on delete set null,
+  starter_words  text[] not null,
+  partner_words  text[],
+  first_message  uuid references public.messages (id) on delete set null,
+  reply_message  uuid references public.messages (id) on delete set null,
+  created_at     timestamptz not null default now()
+);
+alter table public.madlibs enable row level security;
+
+alter table public.messages add column madlib_id uuid references public.madlibs (id) on delete set null;
+
+-- Fill a template: blank n comes from the starter if n is odd, the partner if even.
+-- Filled-in words are wrapped in «» so the app can highlight them.
+create function public._render_madlib(p_template text, a text[], b text[])
+returns text
+language plpgsql stable
+set search_path = public, extensions
+as $$
+declare
+  t public.madlib_templates;
+  out text;
+  n int;
+  word text;
+begin
+  select * into t from public.madlib_templates where id = p_template;
+  out := t.story;
+  for n in reverse array_length(t.prompts, 1)..1 loop
+    word := case when n % 2 = 1 then a[(n + 1) / 2] else b[n / 2] end;
+    out := replace(out, '{' || n || '}', '«' || coalesce(word, '???') || '»');
+  end loop;
+  return t.emoji || ' ' || t.title || E'\n\n' || out;
+end;
+$$;
+
+create function public._clean_words(words text[], expected int)
+returns text[]
+language plpgsql immutable
+as $$
+declare
+  cleaned text[] := array(select left(trim(w), 40) from unnest(words) w);
+begin
+  if coalesce(array_length(cleaned, 1), 0) <> expected
+     or exists (select 1 from unnest(cleaned) w where w = '') then
+    raise exception 'Fill in every blank';
+  end if;
+  return cleaned;
+end;
+$$;
+
+-- Start a Mad Lib: your words go with the first letter.
+create function public.send_madlib(
+  p_recipient uuid, p_template text, p_words text[], p_transport text, p_weather text default null
+) returns uuid
+language plpgsql volatile security definer
+set search_path = public, extensions
+as $$
+declare
+  me uuid := public._require_user();
+  t public.madlib_templates;
+  v_ml uuid;
+  v_message uuid;
+  v_name text;
+begin
+  select * into t from public.madlib_templates where id = p_template;
+  if not found then raise exception 'Unknown Mad Lib'; end if;
+  insert into public.madlibs (template_id, starter_id, partner_id, starter_words)
+  values (p_template, me, p_recipient,
+          public._clean_words(p_words, (array_length(t.prompts, 1) + 1) / 2))
+  returning id into v_ml;
+  select coalesce(display_name, '@' || username) into v_name from public.profiles where id = me;
+  v_message := public.send_message(
+    p_recipient,
+    t.emoji || ' ' || v_name || ' started a Mad Lib: “' || t.title || '”. Your turn to fill in the blanks!',
+    p_transport, p_weather);
+  update public.messages set madlib_id = v_ml where id = v_message;
+  update public.madlibs set first_message = v_message where id = v_ml;
+  return v_message;
+end;
+$$;
+
+-- Finish a Mad Lib you received: your words complete the story, which travels back.
+create function public.reply_madlib(p_message uuid, p_words text[], p_transport text, p_weather text default null)
+returns uuid
+language plpgsql volatile security definer
+set search_path = public, extensions
+as $$
+declare
+  me uuid := public._require_user();
+  ml public.madlibs;
+  t public.madlib_templates;
+  v_words text[];
+  v_reply uuid;
+begin
+  select * into ml from public.madlibs where first_message = p_message for update;
+  if not found or ml.partner_id is distinct from me
+     or public._message_status(p_message) <> 'delivered' then
+    raise exception 'That Mad Lib isn''t waiting on you';
+  end if;
+  if ml.reply_message is not null then raise exception 'You already filled this one in'; end if;
+  select * into t from public.madlib_templates where id = ml.template_id;
+  v_words := public._clean_words(p_words, array_length(t.prompts, 1) / 2);
+  update public.madlibs set partner_words = v_words where id = ml.id;
+  v_reply := public.send_message(ml.starter_id, public._render_madlib(ml.template_id, ml.starter_words, v_words),
+                                 p_transport, p_weather);
+  update public.messages set madlib_id = ml.id where id = v_reply;
+  update public.madlibs set reply_message = v_reply where id = ml.id;
+  return v_reply;
+end;
+$$;
+
+revoke all on function
+  public._render_madlib(text, text[], text[]),
+  public._clean_words(text[], int),
+  public.send_madlib(uuid, text, text[], text, text),
+  public.reply_madlib(uuid, text[], text, text)
+from public, anon, authenticated;
+grant execute on function
+  public.send_madlib(uuid, text, text[], text, text),
+  public.reply_madlib(uuid, text[], text, text)
+to authenticated;
+
 create or replace function public.get_mail()
 returns jsonb
 language plpgsql stable security definer
@@ -302,6 +458,14 @@ begin
     'seal', mine.seal,
     'chain_id', mine.chain_id,
     'chain_link', mine.chain_link,
+    'madlib', case when mine.madlib_id is not null then (
+      select jsonb_build_object(
+        'id', ml.id,
+        'template_id', ml.template_id,
+        'is_reply', ml.reply_message = mine.id,
+        'can_fill', ml.first_message = mine.id and mine.role = 'received' and mine.delivered
+                    and ml.reply_message is null)
+      from public.madlibs ml where ml.id = mine.madlib_id) end,
     -- you hold the chain if this is its newest link, it reached you, and it isn't finished
     'chain_can_pass', mine.chain_id is not null and mine.role = 'received' and mine.delivered
                       and public._chain_open(mine.chain_id)

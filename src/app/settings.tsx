@@ -187,6 +187,16 @@ export default function SettingsScreen() {
           />
         </Section>
 
+        <Section title="🔊 SOUND">
+          <Toggle
+            label="Sound effects"
+            detail="Each carrier makes its own noise as it sets off, plus a chime when you open a new letter. Silent when your phone is."
+            value={settings.sounds}
+            onChange={(sounds) => updateSettings({ sounds })}
+            tint={theme.accent}
+          />
+        </Section>
+
         <Section title="UNITS">
           <Segmented
             options={[

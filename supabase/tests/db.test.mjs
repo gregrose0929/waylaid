@@ -456,13 +456,121 @@ test('postcards: only the right people can see the photo', async () => {
   assert.equal(await as(C, `select can_view_postcard('${path}')`), true, 'finder: after breaking the seal');
 });
 
+test('stationery and wax seals are unlocked by achievements', async () => {
+  const N = '00000000-0000-0000-0000-0000000000f1';
+  await db.exec(`insert into auth.users values ('${N}')`);
+  await as(N, `select save_profile('stationer', null)`);
+  await as(N, `select set_home(39.7, -86.2, null)`);
+  await befriend(N, A);
+  const me = await as(N, `select get_me()`);
+  assert.deepEqual(me.unlocked_cosmetics, ['classic', 'red'], 'everyone starts with cream paper and a red seal');
+  await rejects(as(N, `select send_message('${A}', 'Fancy', 'pigeon', null, null, 'love', null)`), /haven't unlocked that paper/);
+  await rejects(as(N, `select send_message('${A}', 'Fancy', 'pigeon', null, null, null, 'gold')`), /haven't unlocked that seal/);
+  await rejects(as(N, `select send_message('${A}', 'Odd', 'pigeon', null, null, 'red', null)`), /haven't unlocked that paper/);
+  const id = await as(N, `select send_message('${A}', 'Plain', 'pigeon', null, null, 'classic', 'red')`);
+  const sent = await mailOf(N, id);
+  assert.equal(sent.paper, 'classic');
+  assert.equal(sent.seal, 'red');
+  // A has every achievement, so every cosmetic.
+  const fancy = await as(A, `select send_message('${B}', 'Fancy', 'pigeon', null, null, 'love', 'gold')`);
+  assert.deepEqual([(await mailOf(A, fancy)).paper, (await mailOf(A, fancy)).seal], ['love', 'gold']);
+});
+
+test('chain letters pass from friend to friend', async () => {
+  // A -> B -> C, then C ends it.
+  const one = await delivered(A, B, 'Line one');
+  const first = await as(A, `select send_message('${B}', 'Roses are red', 'car', null, null, null, null, true)`);
+  await forceSuccess(await legOf(first));
+  await shiftLeg(await legOf(first), '3 hours', '-1 minute');
+  const atB = await mailOf(B, first);
+  assert.ok(atB.chain_id, 'it is a chain letter');
+  assert.equal(atB.chain_link, 1);
+  assert.equal(atB.chain_can_pass, true, 'B holds the chain');
+  assert.equal(one !== first, true);
+
+  await rejects(as(C, `select send_message('${A}', 'nope', 'car', null, null, null, null, false, '${first}')`), /isn't yours/);
+  await rejects(as(B, `select send_message('${A}', 'back to A', 'car', null, null, null, null, false, '${first}')`), /already part/);
+
+  const second = await as(B, `select send_message('${C}', 'Violets are blue', 'car', null, null, null, null, false, '${first}')`);
+  assert.equal((await mailOf(B, first)).chain_can_pass, false, 'B passed it on');
+  await rejects(as(B, `select send_message('${C}', 'twice', 'car', null, null, null, null, false, '${first}')`), /isn't yours/);
+
+  // Before it arrives, C can't read the chain; A (link 1) only sees up to their own line.
+  await rejects(as(C, `select get_chain('${atB.chain_id}')`), /not part/);
+  let chainForA = await as(A, `select get_chain('${atB.chain_id}')`);
+  assert.deepEqual(chainForA.links.map((l) => l.body), ['Roses are red']);
+
+  await forceSuccess(await legOf(second));
+  await shiftLeg(await legOf(second), '3 hours', '-1 minute');
+  const atC = await as(C, `select get_chain('${atB.chain_id}')`);
+  assert.deepEqual(atC.links.map((l) => l.body), ['Roses are red', 'Violets are blue'], 'C reads every line before theirs');
+  assert.equal(atC.finished, false);
+
+  await rejects(as(B, `select end_chain('${second}')`), /isn't yours/);
+  await as(C, `select end_chain('${second}')`);
+  chainForA = await as(A, `select get_chain('${atB.chain_id}')`);
+  assert.equal(chainForA.finished, true);
+  assert.deepEqual(chainForA.links.map((l) => l.body), ['Roses are red', 'Violets are blue'], 'once over, everyone sees it all');
+  await rejects(as(C, `select send_message('${A}', 'more', 'car', null, null, null, null, false, '${second}')`), /ended/);
+});
+
+test('two-player Mad Libs: take turns, story revealed on the way back', async () => {
+  const t = (await db.query(`select prompts from madlib_templates where id = 'vacation'`)).rows[0];
+  assert.equal(t.prompts.length, 10);
+  const mine = ['sunny', 'pickles', 'yodeling', 'body', 'eleven'];      // blanks 1,3,5,7,9 (adjective, noun, verb-ing, ...)
+  const theirs = ['Ohio', 'llama', 'pizza', 'Hooray', 'soggy'];          // blanks 2,4,6,8,10
+  await rejects(as(A, `select send_madlib('${B}', 'vacation', array['too','few'], 'car')`), /every blank/);
+
+  const first = await as(A, `select send_madlib('${B}', 'vacation', $1::text[], 'car')`, [mine]);
+  let atA = await mailOf(A, first);
+  assert.ok(atA.madlib, 'it is a Mad Lib');
+  assert.equal(atA.madlib.can_fill, false);
+  assert.ok(!atA.body.includes('pickles'), 'the first letter does not reveal any words');
+  await rejects(as(B, `select reply_madlib('${first}', $1::text[], 'car')`, [theirs]), /isn't waiting on you/, 'not before it arrives');
+
+  await forceSuccess(await legOf(first));
+  await shiftLeg(await legOf(first), '3 hours', '-1 minute');
+  const atB = await mailOf(B, first);
+  assert.equal(atB.madlib.can_fill, true, "B's turn");
+  await rejects(as(C, `select reply_madlib('${first}', $1::text[], 'car')`, [theirs]), /isn't waiting on you/);
+
+  const reply = await as(B, `select reply_madlib('${first}', $1::text[], 'car')`, [theirs]);
+  await rejects(as(B, `select reply_madlib('${first}', $1::text[], 'car')`, [theirs]), /already/);
+  assert.equal((await mailOf(B, first)).madlib.can_fill, false);
+  const story = (await mailOf(B, reply)).body;
+  assert.ok(story.startsWith('🏖️ Postcard from Vacation'));
+  assert.ok(story.includes('Greetings from «Ohio»! The weather here is «sunny»'), story.slice(0, 120));
+  assert.ok(story.includes('«soggy»') && !story.includes('{'), 'every blank filled');
+  assert.equal(await mailOf(A, reply), undefined, 'A waits for it to arrive');
+  await forceSuccess(await legOf(reply));
+  await shiftLeg(await legOf(reply), '3 hours', '-1 minute');
+  atA = await mailOf(A, reply);
+  assert.equal(atA.body, story, 'the finished story arrives back');
+  assert.equal(atA.madlib.is_reply, true);
+});
+
+test('crash reports can be written by anyone but read by no one', async () => {
+  await db.exec(`set role anon`);
+  try {
+    await db.query(`select report_crash('Boom', 'at line 1', '{"fatal": true}'::jsonb)`);
+    // Either no access at all or an empty view; both mean "not readable".
+    const n = await db.query(`select count(*)::int n from crash_reports`).then((r) => r.rows[0].n, () => 0);
+    assert.equal(n, 0, 'not readable');
+  } finally {
+    await db.exec(`reset role`);
+  }
+  const { rows } = await db.query(`select message, context from crash_reports`);
+  assert.equal(rows[0].message, 'Boom');
+});
+
 test('clients cannot touch tables or private helpers', async () => {
   // Supabase grants table access to these roles by default; RLS must still hide everything.
   await db.exec(`grant usage on schema public to anon, authenticated;
                  grant select, insert, update, delete on all tables in schema public to anon, authenticated;`);
   await db.query(`select set_config('test.uid', '${A}', false)`);
   const tables = ['profiles', 'messages', 'legs', 'leg_fates', 'contacts', 'mailbox_flags',
-                  'friendships', 'blocks', 'conversation_prefs', 'push_tokens', 'user_achievements', 'towns'];
+                  'friendships', 'blocks', 'conversation_prefs', 'push_tokens', 'user_achievements', 'towns',
+                  'chains', 'crash_reports', 'madlibs'];
   for (const role of ['anon', 'authenticated']) {
     await db.exec(`set role ${role}`);
     try {

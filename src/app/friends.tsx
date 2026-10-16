@@ -1,13 +1,13 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/avatar';
 import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useToast } from '@/components/toast';
-import { EmptyState, Field, Segmented } from '@/components/ui';
+import { Button, EmptyState, Field, Segmented } from '@/components/ui';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api, type Person } from '@/lib/api';
@@ -17,7 +17,16 @@ import { useApp } from '@/providers/app-state';
 type Tab = 'friends' | 'requests' | 'blocked';
 
 export default function FriendsScreen() {
-  const { friends, refreshFriends } = useApp();
+  const { friends, refreshFriends, me } = useApp();
+
+  // Always points at the newest Android build on GitHub.
+  const invite = () =>
+    Share.share({
+      message:
+        `Write to me on Waylaid, the messenger where letters travel by pigeon, snail, or SR-71, and sometimes get lost on the way! 🕊️\n\n` +
+        `1. Download it (Android): https://github.com/gregrose0929/waylaid/releases/latest/download/waylaid.apk\n` +
+        `2. Add me as a friend: @${me?.username ?? ''}`,
+    }).catch(() => {});
   const [tab, setTab] = useState<Tab>(friends.incoming.length > 0 ? 'requests' : 'friends');
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<{ query: string; users: Person[] }>({ query: '', users: [] });
@@ -69,6 +78,7 @@ export default function FriendsScreen() {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={{ gap: Spacing.three, paddingBottom: Spacing.two }}>
+            <Button title="📨 Invite a friend to Waylaid" variant="secondary" onPress={invite} />
             <Field
               placeholder="🔍  Find people by username"
               autoCapitalize="none"

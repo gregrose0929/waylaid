@@ -24,6 +24,27 @@ export type WeatherEffect = {
   risk_mult: number;
 };
 
+export type Cosmetic = {
+  id: string;
+  kind: 'paper' | 'seal';
+  name: string;
+  /** achievement that unlocks it; null = everyone has it */
+  unlocked_by: string | null;
+  sort: number;
+};
+
+export type MadlibTemplate = { id: string; title: string; emoji: string; prompts: string[]; sort: number };
+
+export type MadlibInfo = { id: string; template_id: string; is_reply: boolean; can_fill: boolean };
+
+export type Chain = {
+  id: string;
+  max_links: number;
+  finished: boolean;
+  started_by: Person | null;
+  links: { link: number; message_id: string; from: Person; to: Person; body: string; delivered: boolean; transport_id: string }[];
+};
+
 export type Achievement = {
   id: string;
   title: string;
@@ -60,6 +81,7 @@ export type Me = {
   home_label: string | null;
   share_precise_home: boolean;
   unlocked_carriers: string[];
+  unlocked_cosmetics?: string[];
   /** achievements earned since you last looked */
   new_achievements: { id: string; title: string; emoji: string; unlocks: string | null }[];
   stats: { sent: number; delivered: number; received: number; found: number; achievements: number };
@@ -116,6 +138,13 @@ export type Letter = {
   body: string;
   /** postcard photo in the private "postcards" bucket */
   photo_path: string | null;
+  paper?: string;
+  seal?: string;
+  chain_id?: string | null;
+  chain_link?: number | null;
+  /** you hold this chain letter and can pass it on or end it */
+  chain_can_pass?: boolean;
+  madlib?: MadlibInfo | null;
   other: Person;
   legs: Leg[];
 };
@@ -147,6 +176,9 @@ export type FoundLetter = {
   body: string | null;
   has_photo: boolean;
   photo_path: string | null;
+  seal?: string;
+  paper?: string | null;
+  chain_id?: string | null;
 };
 
 export type LetterState = 'inbox' | 'archived' | 'deleted' | 'restored' | 'unread' | 'read';
@@ -174,6 +206,16 @@ export const api = {
     const { data, error } = await supabase.from('achievements').select('id, title, emoji, unlocks').order('sort');
     if (error) throw new Error(error.message);
     return data as Pick<Achievement, 'id' | 'title' | 'emoji' | 'unlocks'>[];
+  },
+  cosmetics: async () => {
+    const { data, error } = await supabase.from('cosmetics').select('*').order('sort');
+    if (error) throw new Error(error.message);
+    return data as Cosmetic[];
+  },
+  madlibTemplates: async () => {
+    const { data, error } = await supabase.from('madlib_templates').select('id, title, emoji, prompts, sort').order('sort');
+    if (error) throw new Error(error.message);
+    return data as MadlibTemplate[];
   },
   weatherEffects: async () => {
     const { data, error } = await supabase.from('weather_effects').select('*');
@@ -218,14 +260,43 @@ export const api = {
       p_lat: from?.lat ?? null,
       p_lng: from?.lng ?? null,
     }),
-  send: (recipientId: string, body: string, transportId: string, weather?: Weather | null, photoPath?: string | null) =>
+  send: (
+    recipientId: string,
+    body: string,
+    transportId: string,
+    extras: {
+      weather?: Weather | null;
+      photoPath?: string | null;
+      paper?: string | null;
+      seal?: string | null;
+      startChain?: boolean;
+      /** pass on the chain letter with this message id */
+      chainFrom?: string | null;
+    } = {},
+  ) =>
     rpc<string>('send_message', {
       p_recipient: recipientId,
       p_body: body,
       p_transport: transportId,
-      p_weather: weather ?? null,
-      p_photo: photoPath ?? null,
+      p_weather: extras.weather ?? null,
+      p_photo: extras.photoPath ?? null,
+      p_paper: extras.paper ?? null,
+      p_seal: extras.seal ?? null,
+      p_start_chain: extras.startChain ?? false,
+      p_chain_from: extras.chainFrom ?? null,
     }),
+  getChain: (chainId: string) => rpc<Chain>('get_chain', { p_chain: chainId }),
+  endChain: (messageId: string) => rpc<void>('end_chain', { p_message: messageId }),
+  sendMadlib: (recipientId: string, templateId: string, words: string[], transportId: string, weather?: Weather | null) =>
+    rpc<string>('send_madlib', {
+      p_recipient: recipientId,
+      p_template: templateId,
+      p_words: words,
+      p_transport: transportId,
+      p_weather: weather ?? null,
+    }),
+  replyMadlib: (messageId: string, words: string[], transportId: string, weather?: Weather | null) =>
+    rpc<string>('reply_madlib', { p_message: messageId, p_words: words, p_transport: transportId, p_weather: weather ?? null }),
   mail: () => rpc<Letter[]>('get_mail'),
   markRead: (messageId: string) => rpc<void>('mark_read', { p_message: messageId }),
   setLettersState: (messageIds: string[], state: LetterState) =>

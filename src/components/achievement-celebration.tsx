@@ -9,6 +9,7 @@ import { Button } from '@/components/ui';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api } from '@/lib/api';
+import { playSound } from '@/lib/sounds';
 import { useApp } from '@/providers/app-state';
 
 /** Pops up whenever the server reports achievements you haven't seen yet. */
@@ -19,7 +20,9 @@ export function AchievementCelebration() {
   const visible = fresh.length > 0;
 
   useEffect(() => {
-    if (visible) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    if (!visible) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    playSound('achievement');
   }, [visible]);
 
   const dismiss = async (thenSee?: boolean) => {

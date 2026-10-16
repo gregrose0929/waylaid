@@ -11,14 +11,38 @@ import { ToastProvider } from '@/components/toast';
 import { Button } from '@/components/ui';
 import { UpdateBanner } from '@/components/update-banner';
 import { Colors, Spacing } from '@/constants/theme';
+import { installCrashReporting, reportError } from '@/lib/crash-reporting';
 // Importing found-alerts also registers its background geofence task at startup.
 import { stopFoundAlerts, syncFoundAlerts } from '@/lib/found-alerts';
 import { getHere } from '@/lib/location';
 import { registerForPush, useNotificationRouting } from '@/lib/notifications';
+import { setSoundsEnabled } from '@/lib/sounds';
 import { isConfigured } from '@/lib/supabase';
 import { AppStateProvider, useApp } from '@/providers/app-state';
 
 SplashScreen.preventAutoHideAsync();
+installCrashReporting();
+
+/** Shown instead of a blank screen if any screen crashes while rendering. */
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => Promise<void> }) {
+  useEffect(() => {
+    reportError(error, { source: 'render' });
+  }, [error]);
+  return (
+    <ThemedView style={styles.offline}>
+      <View style={{ alignItems: 'center', gap: Spacing.two }}>
+        <ThemedText style={{ fontSize: 56, lineHeight: 68 }}>🪶</ThemedText>
+        <ThemedText type="subtitle" style={{ textAlign: 'center' }}>
+          A carrier tripped
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
+          Something went wrong on this screen. It’s been reported so it can be fixed.
+        </ThemedText>
+      </View>
+      <Button title="Try again" onPress={() => retry()} />
+    </ThemedView>
+  );
+}
 
 export default function RootLayout() {
   const scheme = useColorScheme();
@@ -79,6 +103,7 @@ function RootStack() {
   const signedIn = !!session;
   const ready = signedIn && !!me?.home;
   useBackgroundServices(ready, settings.arrivalAlerts, settings.foundAlerts);
+  useEffect(() => setSoundsEnabled(settings.sounds), [settings.sounds]);
   useNotificationRouting(ready);
 
   useEffect(() => {
@@ -112,6 +137,8 @@ function RootStack() {
           <Stack.Screen name="carriers" options={{ title: 'Carriers' }} />
           <Stack.Screen name="carrier/[id]" options={{ title: '' }} />
           <Stack.Screen name="achievements" options={{ title: 'Achievements' }} />
+          <Stack.Screen name="madlib" options={{ title: 'Mad Lib', presentation: 'modal' }} />
+          <Stack.Screen name="chain/[id]" options={{ title: '' }} />
           <Stack.Screen name="friends" options={{ title: 'Friends' }} />
           <Stack.Screen name="person/[id]" options={{ title: '' }} />
           <Stack.Screen name="archived" options={{ title: 'Archived' }} />

@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
+import { WaxSeal } from '@/components/letter-paper';
 import { Postcard } from '@/components/postcard';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -112,6 +113,9 @@ export default function FoundLetterScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               @{item.to.username}
             </ThemedText>
+          </View>
+          <View style={{ alignItems: 'center', gap: Spacing.one }}>
+            <WaxSeal seal={item.seal} size={52} />
           </View>
           <View style={[styles.seal, { backgroundColor: item.opened_at ? theme.backgroundSelected : theme.accent }]}>
             <ThemedText style={{ color: theme.accentText, fontWeight: 700 }}>
