@@ -14,12 +14,11 @@ import { BottomTabInset, Radius, Spacing } from '@/constants/theme';
 import { useNow } from '@/hooks/use-now';
 import { useTheme } from '@/hooks/use-theme';
 import { api, type LatLng, type Wreck } from '@/lib/api';
-import { formatAgo, formatMeters } from '@/lib/format';
+import { displayName, formatAgo, formatMeters } from '@/lib/format';
 import { distanceMeters, greatCircle, interpolate, progress } from '@/lib/geo';
+import { PICKUP_RADIUS_M } from '@/lib/found-alerts';
 import { useApp } from '@/providers/app-state';
 
-/** Must match the radius enforced by pick_up() on the server. */
-const PICKUP_RADIUS_M = 300;
 /** Re-scan for wrecks after moving this far. */
 const RESCAN_AFTER_M = 500;
 
@@ -33,14 +32,16 @@ export default function MapScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const lastScan = useRef<LatLng | null>(null);
-  // Frame the camera once, after the first scan; never yank it around while someone is panning.
+  // Frame the camera once, after the first scan finds lost letters; never yank it around
+  // while someone is panning.
   const [framed, setFramed] = useState(false);
 
   const scan = useCallback(async (at: LatLng) => {
     lastScan.current = at;
     try {
-      setWrecks(await api.nearbyWrecks(at[0], at[1]));
-      setFramed(true);
+      const found = await api.nearbyWrecks(at[0], at[1]);
+      setWrecks(found);
+      if (found.length > 0) setFramed(true);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -76,13 +77,14 @@ export default function MapScreen() {
     }, [scan]),
   );
 
-  const flying = mail.filter((l) => l.status === 'in_transit');
+  // Only your own letters in flight; incoming ones are a surprise.
+  const flying = mail.filter((l) => l.role === 'sent' && l.status === 'in_transit');
 
   const routes: MapRoute[] = useMemo(
     () =>
       flying.map((l) => {
         const leg = currentLeg(l);
-        return { id: l.id, points: greatCircle(leg.origin, leg.destination), faded: l.role === 'received' };
+        return { id: l.id, points: greatCircle(leg.origin, leg.destination) };
       }),
     [flying],
   );
@@ -94,7 +96,7 @@ export default function MapScreen() {
         id: `fly-${l.id}`,
         coord: interpolate(leg.origin, leg.destination, progress(leg.departed_at, leg.arrives_at, now)),
         emoji: transport(leg.transport_id)?.emoji ?? '✉️',
-        title: l.role === 'sent' ? `To @${l.other.username}` : `From @${l.other.username}`,
+        title: `To ${displayName(l.other)}`,
         subtitle: 'Tap for details',
         onPress: () => router.push({ pathname: '/letter/[id]', params: { id: l.id } }),
       };
@@ -102,7 +104,7 @@ export default function MapScreen() {
     ...wrecks.map((w) => ({
       id: `wreck-${w.leg_id}`,
       coord: w.coords,
-      emoji: w.addressed_to_you ? '💌' : '📜',
+      emoji: '📜',
       onPress: () => setSelectedId(w.leg_id),
     })),
   ];
@@ -123,7 +125,7 @@ export default function MapScreen() {
       setSelectedId(null);
       await Promise.all([refreshMail(), refreshMe(), scan(here)]);
       if (result.outcome === 'delivered') {
-        Alert.alert('It was for you!', 'You found a letter addressed to you. Delivered by hand.');
+        Alert.alert('It was for you!', 'This lost letter was addressed to you. Delivered by hand.');
         router.push({ pathname: '/letter/[id]', params: { id: result.message_id } });
       } else {
         router.push({ pathname: '/found/[legId]', params: { legId: result.leg_id } });
@@ -153,6 +155,7 @@ export default function MapScreen() {
         showsUserLocation
         fit={here ? [here, ...wrecks.slice(0, 3).map((w) => w.coords)] : []}
         fitKey={framed ? 'first-scan' : undefined}
+        center={me?.home ?? null}
       />
 
       <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overlay}>
@@ -172,9 +175,7 @@ export default function MapScreen() {
               <ThemedText style={{ fontSize: 32, lineHeight: 40 }}>{transport(selected.transport_id)?.emoji ?? '📜'}</ThemedText>
               <View style={{ flex: 1 }}>
                 <ThemedText style={{ fontWeight: 700 }}>
-                  {selected.addressed_to_you
-                    ? 'A letter addressed to YOU'
-                    : `A ${transport(selected.transport_id)?.name ?? 'carrier'} went down here`}
+                  A {transport(selected.transport_id)?.name ?? 'carrier'} went down here
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {selected.fail_reason} · {formatAgo(selected.lost_at, now)}

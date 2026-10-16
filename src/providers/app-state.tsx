@@ -10,9 +10,22 @@ import {
   type ReactNode,
 } from 'react';
 
-import { api, type FoundLetter, type Letter, type Me, type Person, type Transport } from '@/lib/api';
+import { api, type Friends, type FoundLetter, type Letter, type Me, type Transport } from '@/lib/api';
 import type { Units } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
+
+/** Device-local preferences. */
+export type Settings = {
+  units: Units;
+  /** classic mailbox list, or letters grouped into conversations by person */
+  mailView: 'mail' | 'conversations';
+  /** notify when you walk near a lost letter (needs background location) */
+  foundAlerts: boolean;
+};
+
+const DEFAULT_SETTINGS: Settings = { units: 'mi', mailView: 'mail', foundAlerts: false };
+const SETTINGS_KEY = 'waylaid.settings';
+const EMPTY_FRIENDS: Friends = { friends: [], incoming: [], outgoing: [], blocked: [] };
 
 type AppState = {
   /** undefined while the stored session is still loading */
@@ -23,19 +36,20 @@ type AppState = {
   transport: (id: string) => Transport | undefined;
   mail: Letter[];
   found: FoundLetter[];
-  contacts: Person[];
+  friends: Friends;
+  settings: Settings;
+  updateSettings: (patch: Partial<Settings>) => void;
+  /** shorthand for settings.units */
   units: Units;
-  setUnits: (u: Units) => void;
   refreshMe: () => Promise<void>;
   refreshMail: () => Promise<void>;
-  refreshContacts: () => Promise<void>;
+  refreshFriends: () => Promise<void>;
   /** set when the profile couldn't be loaded (e.g. offline at launch) */
   loadError: string | null;
   signOut: () => Promise<void>;
 };
 
 const Ctx = createContext<AppState | null>(null);
-const UNITS_KEY = 'waylaid.units';
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -44,9 +58,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [transports, setTransports] = useState<Transport[]>([]);
   const [mail, setMail] = useState<Letter[]>([]);
   const [found, setFound] = useState<FoundLetter[]>([]);
-  const [contacts, setContacts] = useState<Person[]>([]);
+  const [friends, setFriends] = useState<Friends>(EMPTY_FRIENDS);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [units, setUnitsState] = useState<Units>('mi');
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -56,11 +70,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setMail([]);
         setFound([]);
-        setContacts([]);
+        setFriends(EMPTY_FRIENDS);
       }
     });
-    AsyncStorage.getItem(UNITS_KEY)
-      .then((u) => (u === 'km' || u === 'mi') && setUnitsState(u))
+    AsyncStorage.getItem(SETTINGS_KEY)
+      .then((raw) => raw && setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) }))
       .catch(() => {});
     return () => data.subscription.unsubscribe();
   }, []);
@@ -82,14 +96,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [userId]);
 
-  const refreshContacts = useCallback(async () => {
-    setContacts(await api.contacts());
-  }, []);
-
   const refreshMail = useCallback(async () => {
     const [m, f] = await Promise.all([api.mail(), api.found()]);
     setMail(m);
     setFound(f);
+  }, []);
+
+  const refreshFriends = useCallback(async () => {
+    setFriends(await api.friends());
   }, []);
 
   useEffect(() => {
@@ -99,12 +113,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       .then((me) => setProfile({ userId, me }))
       .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
     api.transports().then(setTransports).catch(() => {});
-    api.contacts().then(setContacts).catch(() => {});
+    api.friends().then(setFriends).catch(() => {});
   }, [userId]);
 
-  const setUnits = useCallback((u: Units) => {
-    setUnitsState(u);
-    AsyncStorage.setItem(UNITS_KEY, u).catch(() => {});
+  const updateSettings = useCallback((patch: Partial<Settings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }, []);
 
   const value = useMemo<AppState>(
@@ -115,18 +132,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       transport: (id) => transports.find((t) => t.id === id),
       mail,
       found,
-      contacts,
-      units,
-      setUnits,
+      friends,
+      settings,
+      updateSettings,
+      units: settings.units,
       refreshMe,
       refreshMail,
-      refreshContacts,
+      refreshFriends,
       loadError,
       signOut: async () => {
         await supabase.auth.signOut();
       },
     }),
-    [session, me, transports, mail, found, contacts, units, setUnits, refreshMe, refreshMail, refreshContacts, loadError],
+    [session, me, transports, mail, found, friends, settings, updateSettings, refreshMe, refreshMail, refreshFriends, loadError],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

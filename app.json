@@ -45,10 +45,20 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Waylaid uses your location to place your mailbox and to find lost letters near you."
+          "locationWhenInUsePermission": "Waylaid uses your location to place your mailbox and to find lost letters near you.",
+          "locationAlwaysAndWhenInUsePermission": "Waylaid uses your location in the background to tell you when you walk near a lost letter.",
+          "isAndroidBackgroundLocationEnabled": true
         }
       ],
-      "react-native-maps"
+      "react-native-maps",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#C0452F",
+          "defaultChannel": "letters"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

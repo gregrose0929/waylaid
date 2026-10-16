@@ -2,6 +2,8 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Avatar } from '@/components/avatar';
+import { Icon } from '@/components/icon';
 import { currentLeg } from '@/components/letter-row';
 import { SlowMap, type MapPin, type MapRoute } from '@/components/slow-map';
 import { ThemedText } from '@/components/themed-text';
@@ -10,10 +12,10 @@ import { Button, Card, EmptyState, ProgressBar } from '@/components/ui';
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useNow } from '@/hooks/use-now';
 import { useTheme } from '@/hooks/use-theme';
-import { api, type Leg, type Letter } from '@/lib/api';
+import { activityAt, api, isUnread, type Leg, type Letter } from '@/lib/api';
 import { displayName, formatDistance, formatDuration, formatWhen } from '@/lib/format';
 import { greatCircle, interpolate, progress } from '@/lib/geo';
-import { confirmDelete, toggleArchive } from '@/lib/letter-actions';
+import { useLetterActions } from '@/lib/letter-actions';
 import { useApp } from '@/providers/app-state';
 
 export default function LetterScreen() {
@@ -22,7 +24,7 @@ export default function LetterScreen() {
   const letter = mail.find((l) => l.id === id);
   const now = useNow();
 
-  const shouldMarkRead = letter?.role === 'received' && letter.status === 'delivered' && !letter.read_at;
+  const shouldMarkRead = !!letter && isUnread(letter);
   useEffect(() => {
     if (shouldMarkRead) api.markRead(id).then(refreshMail).catch(() => {});
   }, [shouldMarkRead, id, refreshMail]);
@@ -33,7 +35,8 @@ export default function LetterScreen() {
 }
 
 function LetterView({ letter, now }: { letter: Letter; now: number }) {
-  const { transport, units, refreshMail } = useApp();
+  const { transport, units } = useApp();
+  const actions = useLetterActions();
   const theme = useTheme();
   const leg = currentLeg(letter);
   const t = transport(leg.transport_id);
@@ -45,7 +48,7 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
       id: String(l.leg_no),
       points: greatCircle(l.origin, l.destination),
       dashed: l.outcome !== 'arrived' && l.outcome !== 'in_transit',
-      faded: l !== leg,
+      faded: l !== leg || l.outcome === 'overdue',
     }));
     const pins: MapPin[] = [];
     letter.legs.forEach((l) => {
@@ -67,21 +70,34 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
           title: letter.role === 'sent' ? `To ${who}` : `From ${who}`,
           headerRight: () => (
             <View style={styles.headerActions}>
+              {letter.role === 'received' && (
+                <Pressable
+                  hitSlop={8}
+                  accessibilityLabel="Mark as unread"
+                  onPress={() => {
+                    actions.markUnread([letter.id]);
+                    router.back();
+                  }}>
+                  <Icon name="unread" />
+                </Pressable>
+              )}
               <Pressable
                 hitSlop={8}
-                accessibilityLabel={letter.archived ? 'Unarchive' : 'Archive'}
-                onPress={() => toggleArchive(letter, refreshMail).then(() => router.back(), () => {})}>
-                <ThemedText type="smallBold" style={{ color: theme.accent }}>
-                  {letter.archived ? 'Unarchive' : 'Archive'}
-                </ThemedText>
+                accessibilityLabel={letter.archived ? 'Move to mailbox' : 'Archive'}
+                onPress={() => {
+                  (letter.archived ? actions.unarchive : actions.archive)([letter.id]);
+                  router.back();
+                }}>
+                <Icon name={letter.archived ? 'unarchive' : 'archive'} />
               </Pressable>
               <Pressable
                 hitSlop={8}
                 accessibilityLabel="Delete"
-                onPress={() => confirmDelete(letter, refreshMail).then((gone) => gone && router.back())}>
-                <ThemedText type="smallBold" themeColor="danger">
-                  Delete
-                </ThemedText>
+                onPress={() => {
+                  actions.remove([letter.id]);
+                  router.back();
+                }}>
+                <Icon name="trash" color={theme.danger} />
               </Pressable>
             </View>
           ),
@@ -92,22 +108,19 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
           <SlowMap routes={routes} pins={[...pins, ...movingPin]} fit={fit} fitKey={letter.id} />
         </View>
 
-        <StatusBanner letter={letter} now={now} />
+        <StatusBanner letter={letter} />
 
-        <Card style={styles.person}>
+        <Card
+          style={styles.person}
+          onPress={() => router.push({ pathname: '/person/[id]', params: { id: letter.other.id } })}>
+          <Avatar person={letter.other} />
           <View style={{ flex: 1 }}>
             <ThemedText style={{ fontWeight: 700 }}>{who}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               @{letter.other.username}
             </ThemedText>
           </View>
-          <Pressable
-            hitSlop={8}
-            onPress={() => router.push({ pathname: '/contact/[id]', params: { id: letter.other.id } })}>
-            <ThemedText type="smallBold" style={{ color: theme.accent }}>
-              {letter.other.is_contact ? 'Edit contact' : 'Add contact'}
-            </ThemedText>
-          </Pressable>
+          <Icon name="chevron" size={20} color={theme.textSecondary} />
         </Card>
 
         {inTransit && (
@@ -127,21 +140,12 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
           </Card>
         )}
 
-        {letter.body ? (
-          <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
-            <ThemedText style={styles.letter}>{letter.body}</ThemedText>
-            <ThemedText style={[styles.letter, styles.signature]} themeColor="textSecondary">
-              — {letter.role === 'sent' ? 'you' : who}
-            </ThemedText>
-          </View>
-        ) : (
-          <Card style={{ alignItems: 'center', paddingVertical: Spacing.four }}>
-            <ThemedText style={{ fontSize: 44, lineHeight: 54 }}>✉️</ThemedText>
-            <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
-              {inTransit ? 'Sealed until it arrives.' : 'This letter never reached you.'}
-            </ThemedText>
-          </Card>
-        )}
+        <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+          <ThemedText style={styles.letter}>{letter.body}</ThemedText>
+          <ThemedText style={[styles.letter, styles.signature]} themeColor="textSecondary">
+            — {letter.role === 'sent' ? 'you' : who}
+          </ThemedText>
+        </View>
 
         <ThemedText type="smallBold" themeColor="textSecondary">
           JOURNEY
@@ -152,7 +156,7 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
           ))}
         </View>
 
-        {letter.role === 'received' && letter.status === 'delivered' && (
+        {letter.role === 'received' && letter.other.relationship === 'friend' && (
           <Button
             title="Write back"
             onPress={() =>
@@ -168,15 +172,19 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
   );
 }
 
-function StatusBanner({ letter, now }: { letter: Letter; now: number }) {
+function StatusBanner({ letter }: { letter: Letter }) {
   const who = displayName(letter.other);
-  const leg = currentLeg(letter);
   let emoji = '';
   let text = '';
   switch (letter.status) {
     case 'in_transit':
       emoji = '⏳';
-      text = letter.role === 'sent' ? `On its way to ${who}` : `${who} sent you something. It's on the way.`;
+      text = `On its way to ${who}`;
+      break;
+    case 'overdue':
+      // Like real mail: you never find out what happened unless it turns up.
+      emoji = '🤔';
+      text = `This should have reached ${who} by now… Carriers sometimes run into trouble. If it turns up, you’ll see it here.`;
       break;
     case 'delivered':
       emoji = '✅';
@@ -184,16 +192,11 @@ function StatusBanner({ letter, now }: { letter: Letter; now: number }) {
         letter.role === 'sent'
           ? letter.read_at
             ? `Delivered and read ${formatWhen(letter.read_at)}`
-            : `Delivered ${formatWhen(letter.delivered_at ?? leg.arrives_at)}`
-          : `Arrived ${formatWhen(letter.delivered_at ?? leg.arrives_at)}`;
-      break;
-    case 'lost':
-      emoji = '🪦';
-      text = `Lost in transit. ${sentence(leg.fail_reason ?? '')} ${wreckNote(leg, now)}`;
-      break;
-    case 'found':
-      emoji = '🫳';
-      text = 'A stranger found the letter where its carrier went down. Maybe they will send it on…';
+            : `Delivered ${formatWhen(activityAt(letter))}`
+          : `Arrived ${formatWhen(activityAt(letter))}`;
+      if (letter.legs.length > 1 || letter.legs[0]?.outcome === 'found_by_recipient') {
+        text += '. It took the long way round: see the journey below.';
+      }
       break;
   }
   return (
@@ -204,26 +207,16 @@ function StatusBanner({ letter, now }: { letter: Letter; now: number }) {
   );
 }
 
-const sentence = (s: string) => (s && !/[.!?)]$/.test(s) ? `${s}.` : s);
-
-/** Wrecks crumble 30 days after the letter was due (see nearby_wrecks in the migration). */
-function wreckNote(leg: Leg, now: number) {
-  const left = Date.parse(leg.arrives_at) + 30 * 86_400_000 - now;
-  return left > 0
-    ? `It's still lying out there for someone to find, for about ${formatDuration(left)} more.`
-    : 'It has crumbled to dust.';
-}
-
 function LegRow({ leg, letter }: { leg: Leg; letter: Letter }) {
   const { transport, units } = useApp();
   const t = transport(leg.transport_id);
   const who =
     leg.carrier === 'you' ? 'You' : leg.carrier === 'sender' ? (letter.role === 'sent' ? 'You' : displayName(letter.other)) : 'A stranger';
   const outcome: Record<Leg['outcome'], string> = {
-    in_transit: 'In transit',
+    in_transit: `Due ${formatWhen(leg.arrives_at)}`,
+    overdue: `Was due ${formatWhen(leg.arrives_at)}`,
     arrived: 'Delivered',
     lost: `Lost · ${leg.fail_reason}`,
-    found: `${leg.fail_reason} · picked up by a stranger`,
     forwarded: `${leg.fail_reason} · a stranger picked it up and sent it on`,
     found_by_recipient: `${leg.fail_reason} · the recipient found it themselves!`,
   };
@@ -290,11 +283,13 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    alignItems: 'center',
+    gap: Spacing.four,
   },
   person: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.three,
   },
   legRow: {
     flexDirection: 'row',

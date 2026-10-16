@@ -1,12 +1,19 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { AppState, StyleSheet, useColorScheme, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ToastProvider } from '@/components/toast';
 import { Button } from '@/components/ui';
+import { UpdateBanner } from '@/components/update-banner';
 import { Colors, Spacing } from '@/constants/theme';
+// Importing found-alerts also registers its background geofence task at startup.
+import { stopFoundAlerts, syncFoundAlerts } from '@/lib/found-alerts';
+import { getHere } from '@/lib/location';
+import { registerForPush, useNotificationRouting } from '@/lib/notifications';
 import { isConfigured } from '@/lib/supabase';
 import { AppStateProvider, useApp } from '@/providers/app-state';
 
@@ -30,19 +37,48 @@ export default function RootLayout() {
   };
 
   return (
-    <ThemeProvider value={navTheme}>
-      <AppStateProvider>
-        <RootStack />
-      </AppStateProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider value={navTheme}>
+        <AppStateProvider>
+          <ToastProvider>
+            <UpdateBanner />
+            <RootStack />
+          </ToastProvider>
+        </AppStateProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 
+/** Once signed in: register for pushes, and keep lost-letter geofences fresh on every open. */
+function useBackgroundServices(ready: boolean, foundAlerts: boolean) {
+  useEffect(() => {
+    if (ready) registerForPush().catch(() => {});
+  }, [ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!foundAlerts) {
+      stopFoundAlerts().catch(() => {});
+      return;
+    }
+    const sync = () =>
+      getHere()
+        .then(syncFoundAlerts)
+        .catch(() => {});
+    sync();
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && sync());
+    return () => sub.remove();
+  }, [ready, foundAlerts]);
+}
+
 function RootStack() {
-  const { session, me, loadError } = useApp();
+  const { session, me, loadError, settings } = useApp();
   const loading = isConfigured && (session === undefined || (session && me === undefined));
   const signedIn = !!session;
   const ready = signedIn && !!me?.home;
+  useBackgroundServices(ready, settings.foundAlerts);
+  useNotificationRouting(ready);
 
   useEffect(() => {
     if (!loading || loadError) SplashScreen.hideAsync();
@@ -69,10 +105,13 @@ function RootStack() {
         <Stack.Screen name="compose" options={{ presentation: 'modal', title: 'New letter' }} />
         <Stack.Screen name="letter/[id]" options={{ title: '' }} />
         <Stack.Screen name="found/[legId]" options={{ title: 'Found letter' }} />
+        <Stack.Screen name="conversation/[id]" options={{ title: '' }} />
         <Stack.Screen name="carriers" options={{ title: 'Carriers' }} />
-        <Stack.Screen name="contacts" options={{ title: 'Contacts' }} />
-        <Stack.Screen name="contact/[id]" options={{ title: 'Contact', presentation: 'modal' }} />
+        <Stack.Screen name="friends" options={{ title: 'Friends' }} />
+        <Stack.Screen name="person/[id]" options={{ title: '' }} />
         <Stack.Screen name="archived" options={{ title: 'Archived' }} />
+        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="edit-profile" options={{ title: 'Edit profile', presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>
   );

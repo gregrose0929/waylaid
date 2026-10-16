@@ -1,38 +1,52 @@
-import { Alert, Platform } from 'react-native';
+import { useCallback } from 'react';
 
-import { api, type Letter } from '@/lib/api';
+import { useToast } from '@/components/toast';
+import { api, type LetterState } from '@/lib/api';
+import { useApp } from '@/providers/app-state';
 
-/** Archive, or move back to the mailbox if already archived. */
-export async function toggleArchive(letter: Letter, refresh: () => Promise<void>) {
-  await api.setLetterState(letter.id, letter.archived ? 'inbox' : 'archived');
-  await refresh();
-}
+const count = (n: number, what = 'letter') => (n === 1 ? `1 ${what}` : `${n} ${what}s`);
 
-/** Ask, then delete the letter from your own mailbox only. Resolves true if deleted. */
-export function confirmDelete(letter: Letter, refresh: () => Promise<void>): Promise<boolean> {
-  const run = async () => {
-    await api.setLetterState(letter.id, 'deleted');
-    await refresh();
-    return true;
+/**
+ * Mailbox actions on one or many letters, Gmail-style: act immediately and offer
+ * Undo in a snackbar instead of asking "are you sure?". All of them only affect
+ * your own mailbox.
+ */
+export function useLetterActions() {
+  const { refreshMail } = useApp();
+  const toast = useToast();
+
+  const apply = useCallback(
+    async (ids: string[], state: LetterState, message: string, undo?: LetterState) => {
+      if (ids.length === 0) return;
+      try {
+        await api.setLettersState(ids, state);
+        await refreshMail();
+        toast(
+          message,
+          undo
+            ? {
+                label: 'Undo',
+                onPress: () => {
+                  api
+                    .setLettersState(ids, undo)
+                    .then(refreshMail)
+                    .catch(() => {});
+                },
+              }
+            : undefined,
+        );
+      } catch (e) {
+        toast(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [refreshMail, toast],
+  );
+
+  return {
+    archive: (ids: string[]) => apply(ids, 'archived', `${count(ids.length)} archived`, 'inbox'),
+    unarchive: (ids: string[]) => apply(ids, 'inbox', `${count(ids.length)} moved to your mailbox`, 'archived'),
+    remove: (ids: string[]) => apply(ids, 'deleted', `${count(ids.length)} deleted`, 'restored'),
+    markRead: (ids: string[]) => apply(ids, 'read', `Marked as read`),
+    markUnread: (ids: string[]) => apply(ids, 'unread', `Marked as unread`, 'read'),
   };
-  if (Platform.OS === 'web') return run();
-  return new Promise((resolve) => {
-    Alert.alert(
-      'Delete this letter?',
-      'It disappears from your mailbox for good. The other person keeps their copy.',
-      [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Delete', style: 'destructive', onPress: () => run().then(resolve, () => resolve(false)) },
-      ],
-    );
-  });
-}
-
-/** Long-press menu for a letter in a list. Android allows at most three buttons. */
-export function showLetterMenu(letter: Letter, refresh: () => Promise<void>) {
-  Alert.alert('Letter', undefined, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: letter.archived ? 'Unarchive' : 'Archive', onPress: () => toggleArchive(letter, refresh).catch(() => {}) },
-    { text: 'Delete', style: 'destructive', onPress: () => confirmDelete(letter, refresh) },
-  ]);
 }

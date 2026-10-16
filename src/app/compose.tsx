@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/avatar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TransportPicker } from '@/components/transport-picker';
@@ -17,18 +18,12 @@ import { useApp } from '@/providers/app-state';
 
 export default function ComposeScreen() {
   const params = useLocalSearchParams<{ to?: string }>();
-  const { transport, units, refreshMail, refreshMe, contacts, mail } = useApp();
+  const { transport, units, refreshMail, refreshMe, friends } = useApp();
   const theme = useTheme();
 
   const [query, setQuery] = useState('');
-  const [found, setFound] = useState<{ query: string; users: Person[] }>({ query: '', users: [] });
-  // Replying or writing from a contact: find who they are among people we already know.
-  const [to, setTo] = useState<Person | null>(
-    () =>
-      contacts.find((c) => c.id === params.to) ??
-      mail.find((l) => l.other.id === params.to)?.other ??
-      null,
-  );
+  // You can only write to friends, so the recipient is picked from your friends list.
+  const [to, setTo] = useState<Person | null>(() => friends.friends.find((f) => f.id === params.to) ?? null);
   const [quote, setQuote] = useState<{ recipientId: string; km: number } | null>(null);
   const [body, setBody] = useState('');
   const [carrier, setCarrier] = useState<string | null>('pigeon');
@@ -36,23 +31,10 @@ export default function ComposeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ emoji: string; eta: number } | null>(null);
 
-  // Search usernames as you type.
-  const searching = !to && query.trim().length > 0;
-  const results = searching && found.query === query ? found.users : !to && !searching ? contacts : [];
-  useEffect(() => {
-    if (!searching) return;
-    let cancelled = false;
-    const id = setTimeout(() => {
-      api
-        .findUsers(query)
-        .then((users) => !cancelled && setFound({ query, users }))
-        .catch(() => {});
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(id);
-    };
-  }, [query, searching]);
+  const q = query.trim().toLowerCase();
+  const results = friends.friends.filter(
+    (f) => !q || [f.username, f.display_name, f.nickname].some((s) => s?.toLowerCase().includes(q)),
+  );
 
   // Distance decides every carrier's ETA.
   const distanceKm = to && quote?.recipientId === to.id ? quote.km : null;
@@ -107,6 +89,7 @@ export default function ComposeScreen() {
           {/* To */}
           {to ? (
             <Card style={styles.toCard}>
+              <Avatar person={to} size={40} />
               <View style={{ flex: 1 }}>
                 <ThemedText type="small" themeColor="textSecondary">
                   To
@@ -128,37 +111,54 @@ export default function ComposeScreen() {
             </Card>
           ) : (
             <View style={{ gap: Spacing.two }}>
-              <Field
-                label="To"
-                placeholder="Search usernames or contacts"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
-                value={query}
-                onChangeText={setQuery}
-              />
-              {!searching && results.length > 0 && (
-                <ThemedText type="smallBold" themeColor="textSecondary">
-                  CONTACTS
-                </ThemedText>
-              )}
-              {results.map((r) => (
-                <Card
-                  key={r.id}
-                  onPress={() => {
-                    if (!r.has_home) return;
-                    setTo(r);
-                    setQuery('');
-                    setError(null);
-                  }}
-                  style={!r.has_home && { opacity: 0.5 }}>
-                  <ThemedText style={{ fontWeight: 700 }}>{displayName(r)}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    @{r.username}
-                    {r.has_home ? '' : ' · hasn’t set up a mailbox yet'}
+              {friends.friends.length === 0 ? (
+                <Card style={{ alignItems: 'center', paddingVertical: Spacing.four }}>
+                  <ThemedText style={{ fontSize: 40, lineHeight: 50 }}>🤝</ThemedText>
+                  <ThemedText style={{ fontWeight: 700 }}>Add a friend first</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
+                    Letters can only go to friends. Send someone a friend request and write once they accept.
                   </ThemedText>
+                  <Button
+                    title="Find friends"
+                    variant="secondary"
+                    onPress={() => {
+                      router.back();
+                      router.push('/friends');
+                    }}
+                  />
                 </Card>
-              ))}
+              ) : (
+                <>
+                  <Field
+                    label="To"
+                    placeholder="Search your friends"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    value={query}
+                    onChangeText={setQuery}
+                  />
+                  {results.map((r) => (
+                    <Card
+                      key={r.id}
+                      onPress={() => {
+                        if (!r.has_home) return;
+                        setTo(r);
+                        setQuery('');
+                        setError(null);
+                      }}
+                      style={[styles.toCard, !r.has_home && { opacity: 0.5 }]}>
+                      <Avatar person={r} size={36} />
+                      <View style={{ flex: 1 }}>
+                        <ThemedText style={{ fontWeight: 700 }}>{displayName(r)}</ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          @{r.username}
+                          {r.has_home ? '' : ' · hasn’t set up a mailbox yet'}
+                        </ThemedText>
+                      </View>
+                    </Card>
+                  ))}
+                </>
+              )}
             </View>
           )}
 
@@ -211,6 +211,7 @@ const styles = StyleSheet.create({
   toCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.three,
   },
   paper: {
     borderRadius: Radius.medium,

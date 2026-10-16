@@ -12,6 +12,7 @@ type Props = {
   pins?: MapPin[];
   fit?: LatLng[];
   fitKey?: string;
+  center?: LatLng | null;
   showsUserLocation?: boolean;
   style?: StyleProp<ViewStyle>;
 };
