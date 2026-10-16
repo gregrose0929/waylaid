@@ -20,7 +20,13 @@ spot can pick it up. Then they decide whether to **peek inside**, **send it on**
 - **Lost & found**: wrecks appear on the map, and you can walk to one, pick it up, and choose what to do with it
 - **Broken seals**: if a stranger reads your letter, both you and the recipient find out
 - **Delivered by hand**: if you find a lost letter addressed to *you*, it counts as delivered
-- **Contacts** with private nicknames, **archive** and **delete** (only from your own mailbox)
+- **Friends only**: friend requests, blocking, and private nicknames ("Carrie Rose" for @purplegiraffe)
+- **Like real mail**: you don't know a letter is coming until it lands, and senders are never told a letter was
+  lost: it's just "should have arrived by now…" unless it turns up later
+- **Mail or conversation view**: inbox/sent like email, or letters grouped by person like a (very slow) chat
+- Gmail-style tools: long-press to multi-select, swipe to archive or delete, undo, search, unread filter, mark unread,
+  pin and mute conversations
+- **Notifications** only when a letter arrives, and (opt-in) when you walk near a lost letter
 - Read receipts, a journey log for each letter, stats, miles/km, and light/dark mode
 
 ## How it works
@@ -110,6 +116,10 @@ npm run lint
 
 [EAS Build](https://docs.expo.dev/build/introduction/) compiles the app in the cloud. The Supabase URL and
 publishable key are set in [`eas.json`](eas.json), because `.env` isn't uploaded.
+
+Push notifications use Firebase: `google-services.json` sits in the project root (safe to commit), and the FCM V1
+service-account key is uploaded to the project's credentials on expo.dev (never commit that one). Arrival pushes are
+sent by the database itself every minute via `pg_cron` + `pg_net` (see the Phase 2 migration).
 
 Android needs a Google Maps key (Maps SDK for Android). [`app.config.js`](app.config.js) reads it from an EAS
 environment variable, so it never lands in git:
