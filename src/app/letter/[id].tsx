@@ -142,7 +142,7 @@ function LetterView({ letter, now }: { letter: Letter; now: number }) {
           </Card>
         )}
 
-        {letter.photo_path && <Postcard path={letter.photo_path} height={260} />}
+        {letter.photo_path && <Postcard path={letter.photo_path} />}
         <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
           {!!letter.body && <ThemedText style={styles.letter}>{letter.body}</ThemedText>}
           <ThemedText style={[styles.letter, styles.signature]} themeColor="textSecondary">

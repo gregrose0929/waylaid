@@ -172,7 +172,7 @@ function Bubble({ letter, now }: { letter: Letter; now: number }) {
           letter.status === 'overdue' && { opacity: 0.6 },
           pressed && { opacity: 0.85 },
         ]}>
-        {letter.photo_path && <Postcard path={letter.photo_path} height={180} />}
+        {letter.photo_path && <Postcard path={letter.photo_path} width={240} maxHeight={320} />}
         {!!letter.body && (
           <ThemedText style={[styles.body, mine && { color: theme.accentText }]}>{letter.body}</ThemedText>
         )}

@@ -129,7 +129,7 @@ export default function FoundLetterScreen() {
           </ThemedText>
         </Card>
 
-        {item.photo_path && <Postcard path={item.photo_path} height={240} />}
+        {item.photo_path && <Postcard path={item.photo_path} />}
         {!!item.body && (
           <View style={[styles.paper, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
             <ThemedText style={styles.letter}>{item.body}</ThemedText>

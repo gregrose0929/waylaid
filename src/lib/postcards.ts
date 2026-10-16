@@ -8,7 +8,8 @@ const BUCKET = 'postcards';
 
 /** Let the person pick a photo; returns a local URI, or null if they cancelled. */
 export async function pickPhoto(): Promise<string | null> {
-  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 1 });
+  // No forced crop step: the whole photo goes on the postcard (just shrunk for sending).
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 1 });
   if (result.canceled || !result.assets?.[0]) return null;
   return result.assets[0].uri;
 }
