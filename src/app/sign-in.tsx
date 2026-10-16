@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -101,43 +102,24 @@ export default function SignInScreen() {
 }
 
 /**
- * Reset by emailed code: request a 6-digit code, then enter it with a new password.
- * (The Supabase "Reset Password" email template must include {{ .Token }}.)
+ * Forgot password: Supabase emails a link that opens the app at /reset-password,
+ * where you choose a new one. (waylaid://** must be in Supabase's allowed redirect URLs.)
  */
 function ResetPassword({ initialEmail, onDone }: { initialEmail: string; onDone: () => void }) {
-  const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState(initialEmail);
-  const [code, setCode] = useState('');
-  const [password, setPassword] = useState('');
+  const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function sendCode() {
+  async function send() {
     setBusy(true);
     setError(null);
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim());
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: Linking.createURL('reset-password'),
+    });
     setBusy(false);
     if (err) setError(err.message);
-    else setStep('code');
-  }
-
-  async function reset() {
-    setBusy(true);
-    setError(null);
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email: email.trim(),
-      token: code.trim(),
-      type: 'recovery',
-    });
-    if (verifyError) {
-      setBusy(false);
-      setError(verifyError.message.includes('expired') ? 'That code has expired. Send a new one.' : verifyError.message);
-      return;
-    }
-    // The code signed you in; now set the new password. The app moves on to your mailbox.
-    const { error: updateError } = await supabase.auth.updateUser({ password });
-    setBusy(false);
-    if (updateError) setError(updateError.message);
+    else setSent(true);
   }
 
   return (
@@ -145,18 +127,18 @@ function ResetPassword({ initialEmail, onDone }: { initialEmail: string; onDone:
       <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
           <View style={styles.hero}>
-            <ThemedText style={styles.logo}>🔑</ThemedText>
+            <ThemedText style={styles.logo}>{sent ? '📬' : '🔑'}</ThemedText>
             <ThemedText type="subtitle" style={{ textAlign: 'center' }}>
-              Reset your password
+              {sent ? 'Check your email' : 'Reset your password'}
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
-              {step === 'email'
-                ? 'We’ll email you a 6-digit code. (By email, not by pigeon.)'
-                : `Enter the code we sent to ${email.trim()} and choose a new password.`}
+              {sent
+                ? `We sent a link to ${email.trim()}. Open that email on this phone and tap the link; Waylaid will open so you can choose a new password. (It came by email, not by pigeon.)`
+                : 'We’ll email you a link to choose a new password.'}
             </ThemedText>
           </View>
           <View style={{ gap: Spacing.three }}>
-            {step === 'email' ? (
+            {!sent && (
               <Field
                 placeholder="Email"
                 autoCapitalize="none"
@@ -165,43 +147,15 @@ function ResetPassword({ initialEmail, onDone }: { initialEmail: string; onDone:
                 value={email}
                 onChangeText={setEmail}
               />
-            ) : (
-              <>
-                <Field
-                  placeholder="6-digit code"
-                  keyboardType="number-pad"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={code}
-                  onChangeText={(t) => setCode(t.replace(/[^0-9]/g, ''))}
-                />
-                <Field
-                  placeholder="New password (6+ characters)"
-                  secureTextEntry
-                  autoComplete="new-password"
-                  value={password}
-                  onChangeText={setPassword}
-                />
-              </>
             )}
             <ErrorText>{error}</ErrorText>
-            {step === 'email' ? (
-              <Button title="Email me a code" onPress={sendCode} loading={busy} disabled={!email.includes('@')} />
-            ) : (
-              <>
-                <Button
-                  title="Set new password"
-                  onPress={reset}
-                  loading={busy}
-                  disabled={code.length < 6 || password.length < 6}
-                />
-                <Pressable onPress={sendCode}>
-                  <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
-                    Didn’t get it? Send another code
-                  </ThemedText>
-                </Pressable>
-              </>
-            )}
+            <Button
+              title={sent ? 'Send it again' : 'Email me a link'}
+              variant={sent ? 'secondary' : 'primary'}
+              onPress={send}
+              loading={busy}
+              disabled={!email.includes('@')}
+            />
             <Pressable onPress={onDone}>
               <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
                 Back to sign in
