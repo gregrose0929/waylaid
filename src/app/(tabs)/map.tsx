@@ -60,7 +60,7 @@ export default function MapScreen() {
           return;
         }
         sub = await Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.High, distanceInterval: 15 },
+          { accuracy: Location.Accuracy.High, distanceInterval: 15, mayShowUserSettingsDialog: false },
           (loc) => {
             const at: LatLng = [loc.coords.latitude, loc.coords.longitude];
             setHere(at);

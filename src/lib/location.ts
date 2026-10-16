@@ -12,18 +12,22 @@ export async function getHere({ precise = false } = {}): Promise<Here> {
   if (status !== 'granted') {
     throw new Error('Waylaid needs your location to know where your mailbox is.');
   }
-  // Try the best accuracy first, then settle for less. "Highest" fails outright on Android
-  // phones where Google Location Accuracy is switched off, which is a perfectly normal choice.
+  // Never trigger Google's "turn on Location Accuracy" prompt: on Android that check fails
+  // outright when someone has (reasonably) said no, even though plain GPS works fine.
+  // Skipping it makes the request go straight to the phone's location hardware.
+  const current = (accuracy: Location.Accuracy) => () =>
+    Location.getCurrentPositionAsync({ accuracy, mayShowUserSettingsDialog: false });
+  // Try the best accuracy first, then settle for less.
   const attempts: (() => Promise<Location.LocationObject | null>)[] = precise
     ? [
-        () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest }),
-        () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        current(Location.Accuracy.Highest),
+        current(Location.Accuracy.Balanced),
         () => Location.getLastKnownPositionAsync({ maxAge: 5 * 60_000 }),
       ]
     : [
         () => Location.getLastKnownPositionAsync({ maxAge: 60_000 }),
-        () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        () => Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }),
+        current(Location.Accuracy.Balanced),
+        current(Location.Accuracy.Low),
       ];
   for (const attempt of attempts) {
     const pos = await attempt().catch(() => null);
