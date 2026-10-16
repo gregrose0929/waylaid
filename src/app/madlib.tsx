@@ -152,6 +152,8 @@ export default function MadlibScreen() {
                 onChangeText={(t) => setWords((w) => Object.assign([...w], { [step]: t }))}
                 onSubmitEditing={() => current.trim() && setStep(step + 1)}
                 maxLength={40}
+                // words land mid-sentence, so don't capitalise them
+                autoCapitalize="none"
                 returnKeyType="next"
                 placeholder="Type a word…"
                 placeholderTextColor={theme.textSecondary}
