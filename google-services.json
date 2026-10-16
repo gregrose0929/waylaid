@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "486993716487",
+    "project_id": "waylaid-8c1fc",
+    "storage_bucket": "waylaid-8c1fc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:486993716487:android:60ddacde2cc0d4a46b91a2",
+        "android_client_info": {
+          "package_name": "com.waylaid.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJeap6cfN4Qdv5bkOnp3upFErVgsI_O6o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
