@@ -1,13 +1,10 @@
-import * as Haptics from 'expo-haptics';
 import { memo, useEffect, useRef, type ReactNode } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Extrapolation,
   interpolate,
-  interpolateColor,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
   withSpring,
   withTiming,
@@ -17,6 +14,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { Icon, type IconName } from '@/components/icon';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { haptic } from '@/lib/haptics';
 
 type Action = { label: string; icon: IconName; color: string; onPress: () => void };
 
@@ -26,7 +24,7 @@ const SPRING = { damping: 22, stiffness: 260, mass: 0.7 };
 
 /**
  * Gmail-style swipe: swipe right for `left` (e.g. Archive), left for `right` (e.g. Delete).
- * Past a third of the way the action "arms" (colour deepens, icon pops, haptic tick).
+ * Past a third of the way the action "arms" (icon pops, haptic tick).
  * Let go while armed and the row slides away, the gap closes, then the action runs.
  * Let go before that and it springs back. No half-open state.
  */
@@ -55,10 +53,13 @@ export const SwipeRow = memo(function SwipeRow({
     if (resetTimer.current) clearTimeout(resetTimer.current);
   }, []);
 
-  const tick = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+  // Plain JS callbacks the gesture (on the UI thread) hands back via scheduleOnRN.
+  const onArm = () => haptic.arm();
+  const onDisarm = () => haptic.disarm();
 
   const run = (which: 'left' | 'right') => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    haptic.confirm();
     (which === 'left' ? left : right)?.onPress();
     // Normally the list drops this row before this fires. If it's still here (the
     // action failed, or was undone instantly), put it back.
@@ -82,7 +83,8 @@ export const SwipeRow = memo(function SwipeRow({
       const next = t > w * ARM_AT ? 1 : t < -w * ARM_AT ? -1 : 0;
       if (next !== armed.value) {
         armed.value = next;
-        if (next !== 0) scheduleOnRN(tick);
+        if (next !== 0) scheduleOnRN(onArm);
+        else scheduleOnRN(onDisarm);
       }
     })
     .onEnd((e) => {
@@ -117,15 +119,12 @@ export const SwipeRow = memo(function SwipeRow({
   );
   const rowStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
 
-  // Background: neutral while dragging, full action colour once armed.
-  const armedAnim = useDerivedValue(() => withTiming(armed.value !== 0 ? 1 : 0, { duration: 120 }));
-  // grey (like Gmail) until armed, so the white icon stays readable in light and dark mode
-  const neutral = theme.textSecondary;
-  const leftColor = left?.color ?? neutral;
-  const rightColor = right?.color ?? neutral;
+  // Background: the action's colour from the start; arming is shown by the icon pop and haptic tick.
+  const leftColor = left?.color ?? theme.backgroundSelected;
+  const rightColor = right?.color ?? theme.backgroundSelected;
   const bgStyle = useAnimatedStyle(() => ({
     opacity: interpolate(Math.abs(x.value), [0, 24], [0, 1], Extrapolation.CLAMP),
-    backgroundColor: interpolateColor(armedAnim.value, [0, 1], [neutral, x.value >= 0 ? leftColor : rightColor]),
+    backgroundColor: x.value >= 0 ? leftColor : rightColor,
   }));
   const leftIcon = useAnimatedStyle(() => {
     const p = x.value > 0 ? progress(x.value, width.value) : 0;
