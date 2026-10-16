@@ -1,0 +1,21 @@
+# Supabase's free tier pauses a project after a week without traffic, which would
+# take Waylaid offline. This makes one tiny read a day so that never happens.
+# (The URL and publishable key are public by design; they ship inside the app.)
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: '17 9 * * *' # daily, 09:17 UTC
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read the carrier list
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' \
+            'https://pzxcafawktsbwtojsfjc.supabase.co/rest/v1/transports?select=id&limit=1' \
+            -H 'apikey: sb_publishable_dmq_UrrdPjXWsDwJam-dLw_uyT0Tpda')
+          echo "Supabase answered $status"
+          test "$status" = "200"

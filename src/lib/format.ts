@@ -17,6 +17,11 @@ export function formatMeters(m: number, units: Units): string {
   return m < 1000 ? `${Math.round(m)} m` : formatDistance(m / 1000, units);
 }
 
+/** Fahrenheit with miles, Celsius with kilometres. */
+export function formatTemp(celsius: number, units: Units): string {
+  return units === 'mi' ? `${Math.round((celsius * 9) / 5 + 32)}°F` : `${Math.round(celsius)}°C`;
+}
+
 export function formatSpeed(kmh: number, units: Units): string {
   const value = units === 'mi' ? kmh / KM_PER_MI : kmh;
   if (value < 1) return `${value.toFixed(2)} ${units === 'mi' ? 'mph' : 'km/h'}`;

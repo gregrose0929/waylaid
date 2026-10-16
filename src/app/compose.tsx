@@ -14,7 +14,8 @@ import { Button, Card, ErrorText, Field } from '@/components/ui';
 import { Fonts, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { api, type Person } from '@/lib/api';
-import { displayName, formatDistance, formatDuration } from '@/lib/format';
+import { useDraft } from '@/lib/drafts';
+import { displayName, formatDistance, formatDuration, formatTemp } from '@/lib/format';
 import { pickPhoto, uploadPostcard } from '@/lib/postcards';
 import { estimateTripMs } from '@/lib/trip';
 import { weatherAt, type WeatherNow } from '@/lib/weather';
@@ -26,15 +27,25 @@ export default function ComposeScreen() {
   const theme = useTheme();
 
   const [query, setQuery] = useState('');
+  // The letter in progress is a draft: leave the screen (or close the app) and it's still here.
+  // Writing to someone specific keeps its own draft, separate from a blank new letter.
+  const draft = useDraft(`compose.${params.to ?? 'new'}`, {
+    toId: (params.to ?? null) as string | null,
+    body: '',
+    carrier: 'pigeon' as string | null,
+    photo: null as string | null,
+  });
+  const { toId, body, carrier, photo } = draft.value;
+  const setBody = (v: string) => draft.update({ ...draft.value, body: v });
+  const setCarrier = (v: string | null) => draft.update({ ...draft.value, carrier: v });
+  const setPhoto = (v: string | null) => draft.update({ ...draft.value, photo: v });
   // You can only write to friends, so the recipient is picked from your friends list.
-  const [to, setTo] = useState<Person | null>(() => friends.friends.find((f) => f.id === params.to) ?? null);
+  const to: Person | null = friends.friends.find((f) => f.id === toId) ?? null;
+  const setTo = (p: Person | null) => draft.update({ ...draft.value, toId: p?.id ?? null });
   const [quote, setQuote] = useState<{ recipientId: string; km: number } | null>(null);
-  const [body, setBody] = useState('');
-  const [carrier, setCarrier] = useState<string | null>('pigeon');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ emoji: string; eta: number } | null>(null);
-  const [photo, setPhoto] = useState<string | null>(null);
   const [weather, setWeather] = useState<WeatherNow | null>(null);
 
   // The weather where the letter sets off (your mailbox) affects every carrier differently.
@@ -51,13 +62,14 @@ export default function ComposeScreen() {
 
   // Distance decides every carrier's ETA.
   const distanceKm = to && quote?.recipientId === to.id ? quote.km : null;
+  const toPersonId = to?.id;
   useEffect(() => {
-    if (!to) return;
+    if (!toPersonId) return;
     api
-      .quoteDistance(to.id)
-      .then((km) => setQuote({ recipientId: to.id, km }))
+      .quoteDistance(toPersonId)
+      .then((km) => setQuote({ recipientId: toPersonId, km }))
       .catch((e) => setError(e.message));
-  }, [to]);
+  }, [toPersonId]);
 
   async function send() {
     if (!to || !carrier) return;
@@ -67,6 +79,7 @@ export default function ComposeScreen() {
       const photoPath = photo && me ? await uploadPostcard(photo, me.id) : null;
       await api.send(to.id, body, carrier, weather?.kind, photoPath);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      draft.clear();
       const t = transport(carrier);
       const fx = weatherEffect(weather?.kind, carrier);
       setSent({ emoji: t?.emoji ?? '✉️', eta: t && distanceKm != null ? estimateTripMs(distanceKm, t, fx) : 0 });
@@ -226,7 +239,7 @@ export default function ComposeScreen() {
               <ThemedText style={{ fontSize: 28, lineHeight: 34 }}>{weather.emoji}</ThemedText>
               <View style={{ flex: 1 }}>
                 <ThemedText style={{ fontWeight: 700 }}>
-                  {weather.label} at your mailbox{weather.tempC != null ? ` · ${Math.round(weather.tempC)}°C` : ''}
+                  {weather.label} at your mailbox{weather.tempC != null ? ` · ${formatTemp(weather.tempC, units)}` : ''}
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {weather.kind === 'clear' || weather.kind === 'cloudy'

@@ -20,6 +20,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { activityAt, api, isUnread, type Letter } from '@/lib/api';
 import { displayName, formatDuration } from '@/lib/format';
 import { progress } from '@/lib/geo';
+import { useDraft } from '@/lib/drafts';
 import { useLetterActions } from '@/lib/letter-actions';
 import { estimateTripMs } from '@/lib/trip';
 import { weatherAt, type WeatherNow } from '@/lib/weather';
@@ -192,8 +193,11 @@ function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean 
   const { me, transport, refreshMail, refreshMe, weatherEffect } = useApp();
   const theme = useTheme();
   const toast = useToast();
-  const [body, setBody] = useState('');
-  const [carrier, setCarrier] = useState('pigeon');
+  // Unsent replies are kept per conversation.
+  const draft = useDraft(`reply.${personId}`, { body: '', carrier: 'pigeon' });
+  const { body, carrier } = draft.value;
+  const setBody = (v: string) => draft.update({ ...draft.value, body: v });
+  const setCarrier = (v: string) => draft.update({ ...draft.value, carrier: v });
   const [weather, setWeather] = useState<WeatherNow | null>(null);
   const home = me?.home;
   useEffect(() => {
@@ -228,7 +232,8 @@ function ReplyBar({ personId, canWrite }: { personId: string; canWrite: boolean 
     try {
       await api.send(personId, body, carrier, weather?.kind);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      setBody('');
+      draft.update({ ...draft.value, body: '' });
+      draft.clear();
       await Promise.all([refreshMail(), refreshMe()]);
       const fx = weatherEffect(weather?.kind, carrier);
       if (t && distanceKm != null) toast(`${t.emoji} On its way, about ${formatDuration(estimateTripMs(distanceKm, t, fx))}`);

@@ -190,8 +190,8 @@ export default function SettingsScreen() {
         <Section title="UNITS">
           <Segmented
             options={[
-              { value: 'mi', label: 'Miles' },
-              { value: 'km', label: 'Kilometers' },
+              { value: 'mi', label: 'Miles · °F' },
+              { value: 'km', label: 'Kilometers · °C' },
             ]}
             value={settings.units}
             onChange={(units) => updateSettings({ units })}
